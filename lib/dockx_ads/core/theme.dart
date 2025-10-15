@@ -52,6 +52,9 @@ class IDETheme {
 }
 
 class DockStyle {
+  final double dragHoverBlurSigma; // blur on current drop target
+  final double dragSourceBlurSigma; // (optional) subtle blur on the source node
+  final int dragBlurMs; // animation duration in ms
   // Colors
   final Color background;
   final Color surface;
@@ -153,5 +156,8 @@ class DockStyle {
     this.iconFloatTitle = FluentIcons.edit,
     this.iconResizeGrip = WindowsIcons.resize_mouse_medium,
     this.flyoutAnimationOffset = 28.0,
+    this.dragHoverBlurSigma = 6.0,
+    this.dragSourceBlurSigma = 2.0,
+    this.dragBlurMs = 120,
   });
 }
