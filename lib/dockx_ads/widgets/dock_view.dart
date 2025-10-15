@@ -38,7 +38,7 @@ class _DockAdsState extends State<DockAds> {
 
   AutoSide? _flySide;
   String? _flyPanelId;
-
+  final GlobalKey _hostKey = GlobalKey();
   // floating windows
   final List<_FloatWin> _floats = <_FloatWin>[];
   int? _dragFloatIndex;
@@ -60,6 +60,7 @@ class _DockAdsState extends State<DockAds> {
     final hasBottom = (_autoHidden[AutoSide.bottom] ?? const []).isNotEmpty;
 
     final content = Stack(
+      key: _hostKey,
       fit: StackFit.expand,
       children: [
         AutoHideStrip(
@@ -72,6 +73,42 @@ class _DockAdsState extends State<DockAds> {
               _flyPanelId = id;
             });
           },
+
+          // ⬇️ NEW: enable "move auto-hide"
+          onBeginDrag: (side, id, globalDown) {
+            _drag.isDragging = true;
+            _drag.draggingPanelId = id;
+            _drag.targetKey = null;
+            _drag.hoverRect = null;
+            _drag.hoverZone = DropZone.none;
+            _drag.lastGlobalPos = globalDown; // remember for float fallback
+          },
+          onDragUpdate: (globalMove) {
+            _updateHover(globalMove);
+          },
+          onDragEnd: () {
+            final id = _drag.draggingPanelId;
+            if (id != null) {
+              if (_drag.targetKey != null && _drag.hoverZone != DropZone.none) {
+                final target = _containerByKey[_drag.targetKey!];
+                if (target != null) {
+                  setState(() {
+                    _removeFromAllStrips(id);
+                    _dockInto(target, _drag.hoverZone, id);
+                    _simplifyTree();
+                  });
+                }
+              } else if (_drag.lastGlobalPos != null) {
+                setState(() {
+                  _removeFromAllStrips(id);
+                  floatPanel(id, originGlobal: _drag.lastGlobalPos);
+                });
+              }
+            }
+            _resetDrag();
+          },
+          // ⬆️ NEW
+
           style: widget.style,
         ),
         Padding(
@@ -155,13 +192,12 @@ class _DockAdsState extends State<DockAds> {
           ),
 
         // Dock guides when dragging a floating window (cross + edges)
-        if (_dragFloatIndex != null)
+        if (_drag.isDragging)
           _DockGuidesOverlay(
             targetRect: _currentTargetRect(),
             hoverZone: _drag.hoverZone,
             style: widget.style,
           ),
-
         // Floating windows on top
         ...List.generate(_floats.length, (i) {
           final f = _floats[i];
@@ -240,6 +276,67 @@ class _DockAdsState extends State<DockAds> {
             child: Container(color: widget.style.background, child: content)),
       ],
     );
+  }
+
+  bool _isKeyActive(GlobalKey k) {
+    final ctx = k.currentContext;
+    if (ctx is! Element) return false;
+    if (!ctx.mounted) return false;
+    final ro = ctx.renderObject;
+    if (ro is! RenderBox) return false;
+    if (!ro.hasSize) return false;
+    if (!ro.attached) return false;
+    return true;
+  }
+
+  /// Rect of a child key **in overlay host coords**, null if inactive.
+  Rect? _rectForInOverlay(GlobalKey childKey) {
+    if (!_isKeyActive(childKey)) return null;
+
+    final overlayCtx = _hostKey.currentContext;
+    if (overlayCtx == null) return null;
+    final overlayBox = overlayCtx.findRenderObject() as RenderBox?;
+    if (overlayBox == null || !overlayBox.hasSize || !overlayBox.attached) {
+      return null;
+    }
+
+    final childBox = childKey.currentContext!.findRenderObject() as RenderBox;
+    final topLeftGlobal = childBox.localToGlobal(Offset.zero);
+    final topLeftLocal = overlayBox.globalToLocal(topLeftGlobal);
+    return Rect.fromLTWH(
+      topLeftLocal.dx,
+      topLeftLocal.dy,
+      childBox.size.width,
+      childBox.size.height,
+    );
+  }
+
+  /// First alive container’s rect (overlay coords), or null.
+  Rect? _firstAliveContainerRectInOverlay() {
+    for (final k in _containerByKey.keys) {
+      final r = _rectForInOverlay(k);
+      if (r != null) return r;
+    }
+    return null;
+  }
+
+  /// Overlay host rect (full area inside your dock host), or null.
+  Rect? _overlayHostRect() {
+    final overlayCtx = _hostKey.currentContext;
+    final overlayBox = overlayCtx?.findRenderObject() as RenderBox?;
+    if (overlayBox == null || !overlayBox.attached || !overlayBox.hasSize) {
+      return null;
+    }
+    // In overlay coords, origin is already (0,0)
+    return Offset.zero & overlayBox.size;
+  }
+
+  Rect? _overlayBounds() {
+    final overlayCtx = _hostKey.currentContext;
+    final overlayBox = overlayCtx?.findRenderObject() as RenderBox?;
+    if (overlayBox == null || !overlayBox.hasSize) return null;
+    // Overlay’s own local space: origin = (0,0)
+    return Offset.zero & overlayBox.size;
   }
 
   Widget _buildPanelContent(String panelId) {
@@ -421,9 +518,7 @@ class _DockAdsState extends State<DockAds> {
     GlobalKey? bestKey;
     DropZone zone = DropZone.none;
 
-    // No live targets? Clear hover state and exit.
     if (_containerByKey.isEmpty) {
-      if (!mounted) return;
       setState(() {
         _drag.hoverRect = null;
         _drag.hoverZone = DropZone.none;
@@ -432,24 +527,23 @@ class _DockAdsState extends State<DockAds> {
       return;
     }
 
-    final deadKeys = <GlobalKey>[];
+    final dead = <GlobalKey>[];
 
     for (final entry in _containerByKey.entries) {
       final key = entry.key;
-      final ctx = key.currentContext;
-
-      // ❗️Guard: context may be null or inactive (not mounted)
-      if (ctx == null || !ctx.mounted) {
-        deadKeys.add(key);
+      if (!_isKeyActive(key)) {
+        dead.add(key);
         continue;
       }
 
-      final ro = ctx.findRenderObject();
-      if (ro is! RenderBox || !ro.hasSize) continue;
-
-      final origin = ro.localToGlobal(Offset.zero);
-      final rect =
-          Rect.fromLTWH(origin.dx, origin.dy, ro.size.width, ro.size.height);
+      final ctx = key.currentContext!;
+      final box = ctx.findRenderObject() as RenderBox;
+      final rect = Rect.fromLTWH(
+        box.localToGlobal(Offset.zero).dx,
+        box.localToGlobal(Offset.zero).dy,
+        box.size.width,
+        box.size.height,
+      );
 
       if (rect.contains(global)) {
         bestRect = rect;
@@ -459,19 +553,22 @@ class _DockAdsState extends State<DockAds> {
       }
     }
 
-    // Prune any stale entries so we don't encounter them again.
-    if (deadKeys.isNotEmpty) {
-      for (final k in deadKeys) {
-        _containerByKey.remove(k);
-      }
+    // prune dead keys now
+    for (final k in dead) {
+      _containerByKey.remove(k);
     }
 
-    if (!mounted) return;
     setState(() {
       _drag.hoverRect = bestRect;
       _drag.hoverZone = zone;
       _drag.targetKey = bestKey;
     });
+  }
+
+  void _removeFromAllStrips(String id) {
+    for (final side in _autoHidden.keys) {
+      _autoHidden[side]!.remove(id);
+    }
   }
 
   void _completeDrop() {
@@ -660,31 +757,25 @@ class _DockAdsState extends State<DockAds> {
   }
 
   Rect? _currentTargetRect() {
-    // 1) Try the current target
-    Rect? _rectFor(GlobalKey k) {
-      final ctx = k.currentContext;
-      if (ctx is! Element) return null;
-      final ro = ctx.renderObject;
-      if (ro is! RenderBox || !ro.attached || !ro.hasSize) return null;
-      final p = ro.localToGlobal(Offset.zero);
-      return Rect.fromLTWH(p.dx, p.dy, ro.size.width, ro.size.height);
-    }
-
-    // Current target may be stale between frames — validate it.
+    // 1) Try current target (only if active)
     final tk = _drag.targetKey;
     if (tk != null) {
-      final r = _rectFor(tk);
+      final r = _rectForInOverlay(tk);
       if (r != null) return r;
+
+      // prune immediately if stale to prevent repeated errors
+      if (!_isKeyActive(tk)) {
+        _containerByKey.remove(tk);
+        _drag.targetKey = null;
+      }
     }
 
-    // 2) Fallback: first alive container (covers "exists only one" case)
-    for (final k in _containerByKey.keys) {
-      final r = _rectFor(k);
-      if (r != null) return r;
-    }
+    // 2) Fallback: first alive container (handles "only one" case)
+    final alive = _firstAliveContainerRectInOverlay();
+    if (alive != null) return alive;
 
-    // 3) Nothing alive → no highlight
-    return null;
+    // 3) Last resort: the overlay host itself (keeps arrows on-screen)
+    return _overlayHostRect();
   }
 
   void _dockToEdge(String panelId, DockSide side) {
@@ -869,14 +960,34 @@ class _DockGuidesOverlay extends StatelessWidget {
   Widget build(BuildContext context) {
     if (targetRect == null) return const SizedBox.shrink();
     final r = targetRect!;
-    const double s = 28; // guide button size
-    const double pad = 8;
+    const double s = 28.0; // button size
+    const double pad = 8.0;
 
-    Widget btn(DropZone z, IconData icon, Offset c) {
+    // Clamp helpers so buttons never leave the rect.
+    double clamp(double v, double min, double max) =>
+        v < min ? min : (v > max ? max : v);
+
+    // Allowed center-of-button ranges (keep the whole button inside r).
+    final minX = r.left + s / 2;
+    final maxX = r.right - s / 2;
+    final minY = r.top + s / 2;
+    final maxY = r.bottom - s / 2;
+
+    // Base centers
+    final cx = clamp(r.left + r.width / 2, minX, maxX);
+    final cy = clamp(r.top + r.height / 2, minY, maxY);
+
+    // Edge buttons stay INSIDE the rect with a small padding.
+    final leftX = clamp(r.left + pad + s / 2, minX, maxX);
+    final rightX = clamp(r.right - pad - s / 2, minX, maxX);
+    final topY = clamp(r.top + pad + s / 2, minY, maxY);
+    final bottomY = clamp(r.bottom - pad - s / 2, minY, maxY);
+
+    Widget btn(DropZone z, IconData icon, Offset center) {
       final sel = z == hoverZone;
       return Positioned(
-        left: c.dx - s / 2,
-        top: c.dy - s / 2,
+        left: center.dx - s / 2,
+        top: center.dy - s / 2,
         width: s,
         height: s,
         child: DecoratedBox(
@@ -892,19 +1003,14 @@ class _DockGuidesOverlay extends StatelessWidget {
       );
     }
 
-    final cx = r.left + r.width / 2;
-    final cy = r.top + r.height / 2;
-
     return IgnorePointer(
       child: Stack(children: [
-        btn(DropZone.left, FluentIcons.caret_left_solid8,
-            Offset(r.left - s - pad, cy)),
-        btn(DropZone.right, FluentIcons.caret_right_solid8,
-            Offset(r.right + s + pad, cy)),
-        btn(DropZone.top, FluentIcons.caret_up_solid8,
-            Offset(cx, r.top - s - pad)),
+        // All centers are clamped, so nothing will go out of r.
+        btn(DropZone.left, FluentIcons.caret_left_solid8, Offset(leftX, cy)),
+        btn(DropZone.right, FluentIcons.caret_right_solid8, Offset(rightX, cy)),
+        btn(DropZone.top, FluentIcons.caret_up_solid8, Offset(cx, topY)),
         btn(DropZone.bottom, FluentIcons.caret_down_solid8,
-            Offset(cx, r.bottom + s + pad)),
+            Offset(cx, bottomY)),
         btn(DropZone.center, FluentIcons.page, Offset(cx, cy)),
       ]),
     );

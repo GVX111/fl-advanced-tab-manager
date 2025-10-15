@@ -7,14 +7,22 @@ class AutoHideStrip extends StatelessWidget {
   final Map<AutoSide, List<String>> hidden;
   final String Function(String id) titleOf;
   final void Function(AutoSide side, String id) onShowFlyout;
+  final void Function(AutoSide side, String id, Offset globalDown)?
+      onBeginDrag; // NEW
+  final void Function(Offset globalMove)? onDragUpdate; // NEW
+  final VoidCallback? onDragEnd; // NEW
   final DockStyle style;
 
-  const AutoHideStrip(
-      {super.key,
-      required this.hidden,
-      required this.titleOf,
-      required this.onShowFlyout,
-      this.style = const DockStyle()});
+  const AutoHideStrip({
+    super.key,
+    required this.hidden,
+    required this.titleOf,
+    required this.onShowFlyout,
+    this.onBeginDrag,
+    this.onDragUpdate,
+    this.onDragEnd,
+    this.style = const DockStyle(),
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -43,13 +51,18 @@ class AutoHideStrip extends StatelessWidget {
         bottom: style.autoHideGap,
         width: style.stripThickness,
         child: _SideColumn(
-            side: AutoSide.left,
-            items: hidden[AutoSide.left] ?? const [],
-            titleOf: titleOf,
-            onTap: (id) => onShowFlyout(AutoSide.left, id),
-            style: style),
+          side: AutoSide.left,
+          items: hidden[AutoSide.left] ?? const [],
+          titleOf: titleOf,
+          onTap: (id) => onShowFlyout(AutoSide.left, id),
+          onBeginDrag: onBeginDrag,
+          onDragUpdate: onDragUpdate,
+          onDragEnd: onDragEnd,
+          style: style,
+        ),
       ));
     }
+
     if (hasRight) {
       children.add(Positioned(
         right: 0,
@@ -69,13 +82,18 @@ class AutoHideStrip extends StatelessWidget {
         bottom: style.autoHideGap,
         width: style.stripThickness,
         child: _SideColumn(
-            side: AutoSide.right,
-            items: hidden[AutoSide.right] ?? const [],
-            titleOf: titleOf,
-            onTap: (id) => onShowFlyout(AutoSide.right, id),
-            style: style),
+          side: AutoSide.right,
+          items: hidden[AutoSide.right] ?? const [],
+          titleOf: titleOf,
+          onTap: (id) => onShowFlyout(AutoSide.right, id),
+          onBeginDrag: onBeginDrag,
+          onDragUpdate: onDragUpdate,
+          onDragEnd: onDragEnd,
+          style: style,
+        ),
       ));
     }
+
     if (hasBottom) {
       children.add(Positioned(
         left: 0,
@@ -95,10 +113,14 @@ class AutoHideStrip extends StatelessWidget {
         bottom: 0,
         height: style.stripThickness,
         child: _BottomRow(
-            items: hidden[AutoSide.bottom] ?? const [],
-            titleOf: titleOf,
-            onTap: (id) => onShowFlyout(AutoSide.bottom, id),
-            style: style),
+          items: hidden[AutoSide.bottom] ?? const [],
+          titleOf: titleOf,
+          onTap: (id) => onShowFlyout(AutoSide.bottom, id),
+          onBeginDrag: onBeginDrag,
+          onDragUpdate: onDragUpdate,
+          onDragEnd: onDragEnd,
+          style: style,
+        ),
       ));
     }
 
@@ -112,13 +134,21 @@ class _SideColumn extends StatelessWidget {
   final List<String> items;
   final String Function(String id) titleOf;
   final void Function(String id) onTap;
+  final void Function(AutoSide side, String id, Offset globalDown)? onBeginDrag;
+  final void Function(Offset globalMove)? onDragUpdate;
+  final VoidCallback? onDragEnd;
   final DockStyle style;
-  const _SideColumn(
-      {required this.side,
-      required this.items,
-      required this.titleOf,
-      required this.onTap,
-      required this.style});
+
+  const _SideColumn({
+    required this.side,
+    required this.items,
+    required this.titleOf,
+    required this.onTap,
+    required this.onBeginDrag,
+    required this.onDragUpdate,
+    required this.onDragEnd,
+    required this.style,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -130,8 +160,16 @@ class _SideColumn extends StatelessWidget {
             padding: const EdgeInsets.all(4),
             child: RotatedBox(
               quarterTurns: side == AutoSide.left ? 3 : 1,
-              child: _StripButton(
-                  text: titleOf(id), onTap: () => onTap(id), style: style),
+              child: _DraggableStripButton(
+                side: side,
+                id: id,
+                text: titleOf(id),
+                onTap: () => onTap(id),
+                onBeginDrag: onBeginDrag,
+                onDragUpdate: onDragUpdate,
+                onDragEnd: onDragEnd,
+                style: style,
+              ),
             ),
           ),
       ],
@@ -143,12 +181,20 @@ class _BottomRow extends StatelessWidget {
   final List<String> items;
   final String Function(String id) titleOf;
   final void Function(String id) onTap;
+  final void Function(AutoSide side, String id, Offset globalDown)? onBeginDrag;
+  final void Function(Offset globalMove)? onDragUpdate;
+  final VoidCallback? onDragEnd;
   final DockStyle style;
-  const _BottomRow(
-      {required this.items,
-      required this.titleOf,
-      required this.onTap,
-      required this.style});
+
+  const _BottomRow({
+    required this.items,
+    required this.titleOf,
+    required this.onTap,
+    required this.onBeginDrag,
+    required this.onDragUpdate,
+    required this.onDragEnd,
+    required this.style,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -158,33 +204,81 @@ class _BottomRow extends StatelessWidget {
         for (final id in items)
           Padding(
             padding: const EdgeInsets.all(4),
-            child: _StripButton(
-                text: titleOf(id), onTap: () => onTap(id), style: style),
+            child: _DraggableStripButton(
+              side: AutoSide.bottom,
+              id: id,
+              text: titleOf(id),
+              onTap: () => onTap(id),
+              onBeginDrag: onBeginDrag,
+              onDragUpdate: onDragUpdate,
+              onDragEnd: onDragEnd,
+              style: style,
+            ),
           ),
       ],
     );
   }
 }
 
-class _StripButton extends StatefulWidget {
+class _DraggableStripButton extends StatefulWidget {
+  final AutoSide side;
+  final String id;
   final String text;
   final VoidCallback onTap;
+  final void Function(AutoSide side, String id, Offset globalDown)? onBeginDrag;
+  final void Function(Offset globalMove)? onDragUpdate;
+  final VoidCallback? onDragEnd;
   final DockStyle style;
-  const _StripButton(
-      {required this.text, required this.onTap, required this.style});
+
+  const _DraggableStripButton({
+    required this.side,
+    required this.id,
+    required this.text,
+    required this.onTap,
+    required this.onBeginDrag,
+    required this.onDragUpdate,
+    required this.onDragEnd,
+    required this.style,
+  });
+
   @override
-  State<_StripButton> createState() => _StripButtonState();
+  State<_DraggableStripButton> createState() => _DraggableStripButtonState();
 }
 
-class _StripButtonState extends State<_StripButton> {
+class _DraggableStripButtonState extends State<_DraggableStripButton> {
   bool _hover = false;
+  bool _dragging = false;
+  Offset? _down;
+
   @override
   Widget build(BuildContext context) {
     return MouseRegion(
       onEnter: (_) => setState(() => _hover = true),
       onExit: (_) => setState(() => _hover = false),
-      child: GestureDetector(
-        onTap: widget.onTap,
+      child: Listener(
+        onPointerDown: (e) {
+          _down = e.position;
+        },
+        onPointerMove: (e) {
+          if (_dragging == false && _down != null) {
+            if ((e.position - _down!).distance > 6) {
+              _dragging = true;
+              widget.onBeginDrag?.call(widget.side, widget.id, _down!);
+            }
+          }
+          if (_dragging) {
+            widget.onDragUpdate?.call(e.position);
+          }
+        },
+        onPointerUp: (_) {
+          if (_dragging) {
+            widget.onDragEnd?.call();
+          } else {
+            widget.onTap();
+          }
+          _down = null;
+          _dragging = false;
+        },
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 120),
           padding: widget.style.stripButtonPadding,
@@ -193,8 +287,10 @@ class _StripButtonState extends State<_StripButton> {
                 _hover ? widget.style.stripButtonHover : widget.style.surface,
             border: Border.all(color: widget.style.border),
           ),
-          child: Text(widget.text,
-              style: TextStyle(color: widget.style.text, fontSize: 12)),
+          child: Text(
+            widget.text,
+            style: TextStyle(color: widget.style.text, fontSize: 12),
+          ),
         ),
       ),
     );
