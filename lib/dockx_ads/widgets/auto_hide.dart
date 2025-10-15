@@ -234,6 +234,12 @@ class AutoHideFlyout extends StatefulWidget {
 class _AutoHideFlyoutState extends State<AutoHideFlyout> {
   bool _visible = false;
 
+  // Only the resizable dimension is stored:
+  //  - left/right: store width
+  //  - bottom: store height
+  double? _w; // used for left/right
+  double? _h; // used for bottom
+
   @override
   void initState() {
     super.initState();
@@ -264,10 +270,29 @@ class _AutoHideFlyoutState extends State<AutoHideFlyout> {
   @override
   Widget build(BuildContext context) {
     final size = MediaQuery.of(context).size;
-    final bool vertical = widget.side != AutoSide.bottom;
-    final w = vertical ? 360.0 : size.width;
-    final h = vertical ? size.height : 280.0;
 
+    // Strict 100% dimension per side
+    final isVertical = widget.side != AutoSide.bottom; // left/right
+    // Left/Right => height = 100%
+    // Bottom     => width  = 100%
+
+    // Clamp ranges for the resizable dimension only
+    final minW = 220.0;
+    final maxW = (size.width * 0.8).clamp(minW, size.width);
+    final minH = 160.0;
+    final maxH = (size.height * 0.8).clamp(minH, size.height);
+
+    // Effective size:
+    // - vertical: width is adjustable, height forced to full viewport
+    // - bottom:   height is adjustable, width forced to full viewport
+    final double w = isVertical
+        ? (_w ?? 360.0).clamp(minW, maxW)
+        : size.width; // 100% for bottom
+    final double h = isVertical
+        ? size.height // 100% for left/right
+        : (_h ?? 280.0).clamp(minH, maxH);
+
+    // Position against strips
     final left = widget.side == AutoSide.left
         ? widget.style.stripThickness
         : (widget.side == AutoSide.right
@@ -278,14 +303,98 @@ class _AutoHideFlyoutState extends State<AutoHideFlyout> {
         : 0.0;
 
     Offset? down;
-    final begin = Offset(_startDir().dx * widget.style.flyoutAnimationOffset,
-        _startDir().dy * widget.style.flyoutAnimationOffset);
+    final begin = Offset(
+      _startDir().dx * widget.style.flyoutAnimationOffset,
+      _startDir().dy * widget.style.flyoutAnimationOffset,
+    );
+
+    // Resizers (affect only the free dimension)
+    void _resizeWidth(double dx) {
+      if (!isVertical) return; // bottom doesn't resize width
+      final sign = (widget.side == AutoSide.left) ? 1.0 : -1.0;
+      final next = (w + sign * dx).clamp(minW, maxW);
+      if (next != w) setState(() => _w = next);
+    }
+
+    void _resizeHeight(double dy) {
+      if (isVertical) return; // left/right don't resize height
+      final sign = -1.0; // top grip: dragging up (-dy) grows
+      final next = (h + sign * dy).clamp(minH, maxH);
+      if (next != h) setState(() => _h = next);
+    }
+
+    final header = _FlyoutHeader(
+      title: widget.title,
+      style: widget.style,
+      onDown: (pos) {
+        down = pos;
+        widget.onDragStart(pos);
+      },
+      onMove: (pos) {
+        if (down != null) widget.onDragUpdate(pos);
+      },
+      onUp: () {
+        down = null;
+        widget.onDragEnd();
+      },
+      onPin: () => widget.onPin(widget.side, widget.panelId),
+      onClose: _requestClose,
+    );
+
+    final body = Container(
+      decoration: BoxDecoration(
+        color: widget.style.surface,
+        border: Border.all(color: widget.style.border),
+      ),
+      child: Column(
+        children: [
+          header,
+          Expanded(
+            child: Container(
+              color: widget.style.background,
+              child: widget.content,
+            ),
+          ),
+        ],
+      ),
+    );
+
+    // Grips
+    final grips = <Widget>[];
+    if (widget.side == AutoSide.left) {
+      grips.add(Positioned(
+        right: 0,
+        top: 0,
+        bottom: 0,
+        width: 6,
+        child: _SideResizeBar(onDragDeltaX: _resizeWidth, style: widget.style),
+      ));
+    } else if (widget.side == AutoSide.right) {
+      grips.add(Positioned(
+        left: 0,
+        top: 0,
+        bottom: 0,
+        width: 6,
+        child: _SideResizeBar(onDragDeltaX: _resizeWidth, style: widget.style),
+      ));
+    } else if (widget.side == AutoSide.bottom) {
+      grips.add(Positioned(
+        left: 0,
+        right: 0,
+        top: 0,
+        height: 6,
+        child: _TopResizeBar(onDragDeltaY: _resizeHeight, style: widget.style),
+      ));
+    }
 
     return Stack(children: [
+      // click outside to close
       Positioned.fill(
         child: GestureDetector(
-            onTap: _requestClose,
-            child: Container(color: const Color(0x00000000))),
+          behavior: HitTestBehavior.opaque,
+          onTap: _requestClose,
+          child: Container(color: const Color(0x00000000)),
+        ),
       ),
       AnimatedPositioned(
         duration: const Duration(milliseconds: 200),
@@ -296,58 +405,137 @@ class _AutoHideFlyoutState extends State<AutoHideFlyout> {
         height: h,
         child: TweenAnimationBuilder<Offset>(
           tween: Tween<Offset>(
-              begin: _visible ? Offset.zero : begin,
-              end: _visible ? Offset.zero : begin),
+            begin: _visible ? Offset.zero : begin,
+            end: _visible ? Offset.zero : begin,
+          ),
           duration: const Duration(milliseconds: 220),
           curve: Curves.easeOutCubic,
           builder: (_, offset, child) =>
               Transform.translate(offset: offset, child: child),
-          child: Container(
-            decoration: BoxDecoration(
-                color: widget.style.surface,
-                border: Border.all(color: widget.style.border)),
-            child: Column(children: [
-              Listener(
-                onPointerDown: (e) {
-                  down = e.position;
-                  widget.onDragStart(e.position);
-                },
-                onPointerMove: (e) {
-                  if (down != null) widget.onDragUpdate(e.position);
-                },
-                onPointerUp: (_) {
-                  down = null;
-                  widget.onDragEnd();
-                },
-                child: Container(
-                  height: 28,
-                  color: widget.style.surface,
-                  child: Row(children: [
-                    const SizedBox(width: 8),
-                    Expanded(
-                        child: Text(widget.title,
-                            style: TextStyle(
-                                color: widget.style.text, fontSize: 12))),
-                    IconButton(
-                        icon: Icon(widget.style.iconPin,
-                            size: 12, color: widget.style.text),
-                        onPressed: () {
-                          widget.onPin(widget.side, widget.panelId);
-                        }),
-                    IconButton(
-                        icon: Icon(widget.style.iconClose,
-                            size: 12, color: widget.style.text),
-                        onPressed: _requestClose),
-                  ]),
-                ),
-              ),
-              Expanded(
-                  child: Container(
-                      color: widget.style.background, child: widget.content)),
-            ]),
-          ),
+          child: Stack(children: [body, ...grips]),
         ),
       ),
     ]);
+  }
+}
+
+// ======= header and grips (unchanged, theme-aware) =================
+
+class _FlyoutHeader extends StatelessWidget {
+  final String title;
+  final DockStyle style;
+  final void Function(Offset pos) onDown;
+  final void Function(Offset pos) onMove;
+  final VoidCallback onUp;
+  final VoidCallback onPin;
+  final VoidCallback onClose;
+  const _FlyoutHeader({
+    required this.title,
+    required this.style,
+    required this.onDown,
+    required this.onMove,
+    required this.onUp,
+    required this.onPin,
+    required this.onClose,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    Offset? down;
+    return Listener(
+      onPointerDown: (e) {
+        down = e.position;
+        onDown(e.position);
+      },
+      onPointerMove: (e) {
+        if (down != null) onMove(e.position);
+      },
+      onPointerUp: (_) {
+        down = null;
+        onUp();
+      },
+      child: Container(
+        height: 28,
+        color: style.surface,
+        child: Row(
+          children: [
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                title,
+                style: TextStyle(color: style.text, fontSize: 12),
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+            IconButton(
+              icon: Icon(style.iconPin, size: 12, color: style.text),
+              onPressed: onPin,
+            ),
+            IconButton(
+              icon: Icon(style.iconClose, size: 12, color: style.text),
+              onPressed: onClose,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _SideResizeBar extends StatefulWidget {
+  final void Function(double dx) onDragDeltaX;
+  final DockStyle style;
+  const _SideResizeBar({required this.onDragDeltaX, required this.style});
+  @override
+  State<_SideResizeBar> createState() => _SideResizeBarState();
+}
+
+class _SideResizeBarState extends State<_SideResizeBar> {
+  bool _hover = false;
+  @override
+  Widget build(BuildContext context) {
+    return MouseRegion(
+      cursor: SystemMouseCursors.resizeLeftRight,
+      onEnter: (_) => setState(() => _hover = true),
+      onExit: (_) => setState(() => _hover = false),
+      child: Listener(
+        onPointerMove: (e) => widget.onDragDeltaX(e.delta.dx),
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            color: _hover ? widget.style.surface2 : const Color(0x00000000),
+            border: Border(left: BorderSide(color: widget.style.border)),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _TopResizeBar extends StatefulWidget {
+  final void Function(double dy) onDragDeltaY;
+  final DockStyle style;
+  const _TopResizeBar({required this.onDragDeltaY, required this.style});
+  @override
+  State<_TopResizeBar> createState() => _TopResizeBarState();
+}
+
+class _TopResizeBarState extends State<_TopResizeBar> {
+  bool _hover = false;
+  @override
+  Widget build(BuildContext context) {
+    return MouseRegion(
+      cursor: SystemMouseCursors.resizeUpDown,
+      onEnter: (_) => setState(() => _hover = true),
+      onExit: (_) => setState(() => _hover = false),
+      child: Listener(
+        onPointerMove: (e) => widget.onDragDeltaY(e.delta.dy),
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            color: _hover ? widget.style.surface2 : const Color(0x00000000),
+            border: Border(bottom: BorderSide(color: widget.style.border)),
+          ),
+        ),
+      ),
+    );
   }
 }

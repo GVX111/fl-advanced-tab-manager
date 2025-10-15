@@ -225,7 +225,9 @@ class _DockAdsState extends State<DockAds> {
         AnimatedBuilder(
           animation: Listenable.merge([]),
           builder: (_, __) {
-            final rect = _currentTargetRect();
+            final rect =
+                (_drag.targetKey == null) ? null : _currentTargetRect();
+// DragOverlay already tolerates null targetRect; if not, guard inside it too.
             return DragOverlay(drag: _drag, targetRect: rect);
           },
         ),
@@ -419,20 +421,48 @@ class _DockAdsState extends State<DockAds> {
     GlobalKey? bestKey;
     DropZone zone = DropZone.none;
 
+    // No live targets? Clear hover state and exit.
+    if (_containerByKey.isEmpty) {
+      if (!mounted) return;
+      setState(() {
+        _drag.hoverRect = null;
+        _drag.hoverZone = DropZone.none;
+        _drag.targetKey = null;
+      });
+      return;
+    }
+
+    final deadKeys = <GlobalKey>[];
+
     for (final entry in _containerByKey.entries) {
       final key = entry.key;
       final ctx = key.currentContext;
-      if (ctx == null) continue;
-      final box = ctx.findRenderObject() as RenderBox?;
-      if (box == null || !box.hasSize) continue;
-      final pos = box.localToGlobal(Offset.zero);
+
+      // ❗️Guard: context may be null or inactive (not mounted)
+      if (ctx == null || !ctx.mounted) {
+        deadKeys.add(key);
+        continue;
+      }
+
+      final ro = ctx.findRenderObject();
+      if (ro is! RenderBox || !ro.hasSize) continue;
+
+      final origin = ro.localToGlobal(Offset.zero);
       final rect =
-          Rect.fromLTWH(pos.dx, pos.dy, box.size.width, box.size.height);
+          Rect.fromLTWH(origin.dx, origin.dy, ro.size.width, ro.size.height);
+
       if (rect.contains(global)) {
         bestRect = rect;
         bestKey = key;
         zone = _classifyZone(rect, global);
         break;
+      }
+    }
+
+    // Prune any stale entries so we don't encounter them again.
+    if (deadKeys.isNotEmpty) {
+      for (final k in deadKeys) {
+        _containerByKey.remove(k);
       }
     }
 
@@ -449,18 +479,18 @@ class _DockAdsState extends State<DockAds> {
     final id = _drag.draggingPanelId;
     final key = _drag.targetKey;
     final zone = _drag.hoverZone;
-    if (id != null && key != null && zone != DropZone.none) {
-      final target = _containerByKey[key]!;
-      if (!mounted) return;
-      setState(() {
-        _dockInto(target, zone, id);
-        _simplifyTree();
-      });
-    }
-  }
 
-  DockSide _declaredSide(String panelId) {
-    return widget.layout.registry.getById(panelId).position;
+    // No target or no zone → just reset
+    if (id == null || key == null || zone == DropZone.none) return;
+
+    final container = _containerByKey[key];
+    if (container == null) return; // key was pruned
+
+    if (!mounted) return;
+    setState(() {
+      _dockInto(container, zone, id);
+      _simplifyTree();
+    });
   }
 
   void _dockInto(ContainerNode target, DropZone zone, String panelId) {
@@ -630,14 +660,31 @@ class _DockAdsState extends State<DockAds> {
   }
 
   Rect? _currentTargetRect() {
-    final key = _drag.targetKey;
-    if (key == null) return null;
-    final ctx = key.currentContext;
-    if (ctx == null) return null;
-    final box = ctx.findRenderObject() as RenderBox?;
-    if (box == null || !box.hasSize) return null;
-    final pos = box.localToGlobal(Offset.zero);
-    return Rect.fromLTWH(pos.dx, pos.dy, box.size.width, box.size.height);
+    // 1) Try the current target
+    Rect? _rectFor(GlobalKey k) {
+      final ctx = k.currentContext;
+      if (ctx is! Element) return null;
+      final ro = ctx.renderObject;
+      if (ro is! RenderBox || !ro.attached || !ro.hasSize) return null;
+      final p = ro.localToGlobal(Offset.zero);
+      return Rect.fromLTWH(p.dx, p.dy, ro.size.width, ro.size.height);
+    }
+
+    // Current target may be stale between frames — validate it.
+    final tk = _drag.targetKey;
+    if (tk != null) {
+      final r = _rectFor(tk);
+      if (r != null) return r;
+    }
+
+    // 2) Fallback: first alive container (covers "exists only one" case)
+    for (final k in _containerByKey.keys) {
+      final r = _rectFor(k);
+      if (r != null) return r;
+    }
+
+    // 3) Nothing alive → no highlight
+    return null;
   }
 
   void _dockToEdge(String panelId, DockSide side) {
