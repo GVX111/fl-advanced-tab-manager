@@ -1,0 +1,19 @@
+name: dockx_ads_v040
+description: Qt-ADS-style docking for Flutter with Visual Studio look. Auto-hide strips with background, save/load perspective, drag from flyout.
+publish_to: "none"
+version: 0.4.4+2
+
+environment:
+  sdk: ">=3.3.0 <4.0.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  fluent_ui: ^4.8.6
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+
+flutter:
+  uses-material-design: true
