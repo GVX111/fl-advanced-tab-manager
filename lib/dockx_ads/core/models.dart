@@ -117,6 +117,11 @@ class DockPanelRegistry {
     }
   }
 
+  bool has(String id) {
+    final p = _panels[id];
+    return p != null;
+  }
+
   DockPanelRuntime getById(String id) {
     final p = _panels[id];
     if (p == null) {
