@@ -1,5 +1,5 @@
 import 'dart:convert';
-import 'package:dockx_ads_v040/dockx_ads/widgets/floating_panel.dart';
+import 'package:fl_advanced_tab_manager/dockx_ads/widgets/floating_panel.dart';
 import 'package:fluent_ui/fluent_ui.dart';
 import 'package:flutter/widgets.dart';
 import '../core/models.dart';

@@ -1,5 +1,5 @@
-name: dockx_ads_v040
-description: Qt-ADS-style docking for Flutter with Visual Studio look. Auto-hide strips with background, save/load perspective, drag from flyout.
+name: fl_advanced_tab_manager
+description: Advanced docking manager Auto-hide strips with background, save/load perspective, drag from flyout.
 publish_to: "none"
 version: 0.4.4+2
 

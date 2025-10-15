@@ -1,4 +1,4 @@
-import 'package:dockx_ads_v040/dockx_ads/core/drag_model.dart';
+import 'package:fl_advanced_tab_manager/dockx_ads/core/drag_model.dart';
 import 'package:fluent_ui/fluent_ui.dart';
 import '../core/models.dart';
 import '../core/theme.dart';
