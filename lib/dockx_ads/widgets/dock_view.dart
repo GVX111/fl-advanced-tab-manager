@@ -814,8 +814,10 @@ class _ContainerFrame extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       decoration: BoxDecoration(
-          color: style.surface,
-          border: Border.all(color: style.border, width: 1)),
+        color: style.surface,
+        border: Border.all(color: style.border, width: 1),
+        borderRadius: BorderRadius.circular(style.cornerRadius),
+      ),
       child: child,
     );
   }
