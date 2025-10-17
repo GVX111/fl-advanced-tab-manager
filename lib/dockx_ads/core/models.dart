@@ -1,3 +1,4 @@
+import 'package:fl_advanced_tab_manager/dockx_ads/core/persistence.dart';
 import 'package:flutter/widgets.dart';
 
 class DockPanelSpec {
@@ -162,6 +163,7 @@ class DockPanelRegistry {
   bool has(String id) => _panels.containsKey(id);
 
   void unregister(String id) => _panels.remove(id);
+  void clear() => _panels.clear();
 
   DockPanelRuntime getById(String id) {
     final p = _panels[id];
@@ -313,6 +315,13 @@ class DockLayout {
     return activated;
   }
 
+  bool clear() {
+    registry.clear();
+    preferredSide.clear();
+    this.root = DockLayout.empty(registry).root;
+    return true;
+  }
+
   /// Remove a panel by id (optionally everywhere).
   bool removePanel(String id, {bool removeAll = true}) {
     bool removed = false;
@@ -350,14 +359,6 @@ class DockLayout {
     }
 
     visit(root);
-  }
-
-  ContainerNode _findFirstContainerWhere(bool Function(ContainerNode) test) {
-    ContainerNode? hit;
-    _visitContainers((c) {
-      if (hit == null && test(c)) hit = c;
-    });
-    return hit ?? _ensureCenterContainer();
   }
 
   ContainerNode _ensureCenterContainer() {

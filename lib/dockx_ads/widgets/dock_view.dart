@@ -1,4 +1,3 @@
-import 'dart:convert';
 import 'package:fl_advanced_tab_manager/dockx_ads/widgets/animate_blur.dart';
 import 'package:fl_advanced_tab_manager/dockx_ads/widgets/floating_panel.dart';
 import 'package:fluent_ui/fluent_ui.dart';
@@ -55,15 +54,6 @@ class _DockAdsState extends State<DockAds> {
   final List<_FloatWin> _floats = <_FloatWin>[];
   int? _dragFloatIndex;
   Offset _dragFloatGrabOffset = Offset.zero;
-
-  String exportPerspective() => jsonEncode(widget.layout.toJson());
-  void importPerspective(String jsonStr) {
-    try {
-      final map = jsonDecode(jsonStr) as Map<String, dynamic>;
-      setState(() =>
-          widget.layout = DockLayout.fromJson(map, widget.layout.registry));
-    } catch (_) {}
-  }
 
   @override
   Widget build(BuildContext context) {

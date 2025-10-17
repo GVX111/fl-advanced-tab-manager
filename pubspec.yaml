@@ -1,6 +1,7 @@
 name: fl_advanced_tab_manager
 description: Advanced docking manager Auto-hide strips with background, save/load perspective, drag from flyout.
 publish_to: "none"
+publisher: Givi Bibileishvili
 version: 0.4.4+2
 
 environment:

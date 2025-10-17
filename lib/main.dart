@@ -1,3 +1,6 @@
+import 'dart:convert';
+import 'package:fl_advanced_tab_manager/dockx_ads/core/persistence.dart';
+import 'package:flutter/services.dart'; // Clipboard
 import 'package:fluent_ui/fluent_ui.dart';
 import 'dockx_ads/core/models.dart';
 import 'dockx_ads/widgets/dock_view.dart';
@@ -35,7 +38,7 @@ class _Home extends StatefulWidget {
 
 class _HomeState extends State<_Home> {
   late final DockPanelRegistry reg;
-  late final DockLayout layout;
+  late DockLayout layout;
 
   int _editorCount = 1;
   int _explorerCount = 1;
@@ -48,6 +51,92 @@ class _HomeState extends State<_Home> {
     reg = DockPanelRegistry();
     // Start EMPTY to avoid bad-state when nothing is registered yet.
     layout = DockLayout.empty(reg);
+  }
+
+  // ----------------- Export / Import helpers -----------------
+
+  Future<void> _showExportDialog() async {
+    final jsonStr = jsonEncode(layout.toJson());
+    final controller = TextEditingController(text: jsonStr);
+    await showDialog(
+      context: context,
+      builder: (_) => ContentDialog(
+        title: const Text('Export Perspective (read-only)'),
+        content: SizedBox(
+          width: 560,
+          child: TextBox(
+            controller: controller,
+            readOnly: true,
+            maxLines: 16,
+            minLines: 8,
+          ),
+        ),
+        actions: [
+          Button(
+            child: const Text('Close'),
+            onPressed: () => Navigator.pop(context),
+          ),
+          FilledButton(
+            child: const Text('Copy JSON'),
+            onPressed: () async {
+              await Clipboard.setData(ClipboardData(text: controller.text));
+              Navigator.pop(context);
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _showImportDialog() async {
+    final controller = TextEditingController();
+    await showDialog(
+      context: context,
+      builder: (_) => ContentDialog(
+        title: const Text('Import Perspective (paste JSON)'),
+        content: SizedBox(
+          width: 560,
+          child: TextBox(
+            controller: controller,
+            placeholder: 'Paste exported JSON here…',
+            maxLines: 16,
+            minLines: 8,
+          ),
+        ),
+        actions: [
+          Button(
+            child: const Text('Cancel'),
+            onPressed: () => Navigator.pop(context),
+          ),
+          FilledButton(
+            child: const Text('Import'),
+            onPressed: () {
+              final imported = reg.importJson(
+                controller.text,
+                specFactory: (id) {
+                  if (id.startsWith('console-')) {
+                    return DockPanelSpec(
+                      id: id,
+                      title: 'Console',
+                      position: DockSide.bottom,
+                      builder: (_) => const _Console(),
+                    );
+                  }
+                  // Unknown? return null → will use policy below.
+                  return null;
+                },
+                missingPanelPolicy: MissingPanelPolicy.registerPlaceholder,
+              );
+
+// apply
+              setState(() {
+                layout = imported;
+              });
+            },
+          ),
+        ],
+      ),
+    );
   }
 
   // ----------------- Add buttons -----------------
@@ -114,9 +203,8 @@ class _HomeState extends State<_Home> {
     return NavigationView(
       appBar: NavigationAppBar(
         title: const Text('DockX ADS – Demo'),
-        // IMPORTANT: Bound the actions height to avoid "RenderBox was not laid out"
         actions: SizedBox(
-          height: 40, // 36–48 is fine
+          height: 40, // keep command bar constrained
           child: CommandBar(
             overflowBehavior: CommandBarOverflowBehavior.scrolling,
             primaryItems: [
@@ -140,14 +228,32 @@ class _HomeState extends State<_Home> {
                 label: const Text('Console (Bottom)'),
                 onPressed: _addConsole,
               ),
+
+              const CommandBarSeparator(),
+
+              // NEW: Export / Import perspective
+              CommandBarButton(
+                icon: const Icon(FluentIcons.save),
+                label: const Text('Export'),
+                onPressed: _showExportDialog,
+              ),
+              CommandBarButton(
+                icon: const Icon(FluentIcons.open_file),
+                label: const Text('Import'),
+                onPressed: _showImportDialog,
+              ),
+              CommandBarButton(
+                  icon: const Icon(FluentIcons.clear),
+                  label: const Text('Clear'),
+                  onPressed: () => setState(() {
+                        layout.clear();
+                      })),
             ],
           ),
         ),
       ),
       content: ScaffoldPage(
         padding: EdgeInsets.zero,
-        // If DockAds ever sits inside a Column in your app, wrap it in Expanded.
-        // Here it's the direct content so it's already fully constrained.
         content: DockAds(layout: layout),
       ),
     );
