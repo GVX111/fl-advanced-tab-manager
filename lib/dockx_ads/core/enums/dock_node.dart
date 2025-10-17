@@ -1,0 +1,1 @@
+enum SplitAxis { horizontal, vertical }

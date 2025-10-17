@@ -1,10 +1,14 @@
 import 'dart:convert';
+import 'package:fl_advanced_tab_manager/dockx_ads/core/container_node.dart';
+import 'package:fl_advanced_tab_manager/dockx_ads/core/dock_layout.dart';
+import 'package:fl_advanced_tab_manager/dockx_ads/core/dock_node.dart';
+import 'package:fl_advanced_tab_manager/dockx_ads/core/dock_panel_registry.dart';
+import 'package:fl_advanced_tab_manager/dockx_ads/core/dock_panel_spec.dart';
 import 'package:fl_advanced_tab_manager/dockx_ads/core/drag_model.dart';
+import 'package:fl_advanced_tab_manager/dockx_ads/core/enums/dock_node.dart';
+import 'package:fl_advanced_tab_manager/dockx_ads/core/enums/split_node.dart';
+import 'package:fl_advanced_tab_manager/dockx_ads/core/split_node.dart';
 import 'package:flutter/widgets.dart';
-
-import 'models.dart'; // your DockPanel* + nodes + DockLayout + enums (AutoSide/DockSide)
-
-/* -------------------- Missing-resolution options -------------------- */
 
 typedef DockSpecFactory = DockPanelSpec? Function(String id);
 

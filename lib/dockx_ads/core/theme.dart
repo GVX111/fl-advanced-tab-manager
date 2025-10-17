@@ -4,6 +4,7 @@
 import 'package:fluent_ui/fluent_ui.dart';
 
 class IDETheme {
+  static const double edgeSnapBand = 26;
   // Base colors
   static const background = Color(0xFF2D2D30);
   static const surface = Color(0xFF3C3C3C);

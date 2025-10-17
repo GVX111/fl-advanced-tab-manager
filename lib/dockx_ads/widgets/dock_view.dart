@@ -1,5 +1,10 @@
+import 'package:fl_advanced_tab_manager/dockx_ads/core/container_node.dart';
+import 'package:fl_advanced_tab_manager/dockx_ads/core/dock_layout.dart';
+import 'package:fl_advanced_tab_manager/dockx_ads/core/dock_node.dart';
 import 'package:fl_advanced_tab_manager/dockx_ads/core/drag_model.dart';
-import 'package:fl_advanced_tab_manager/dockx_ads/core/models.dart';
+import 'package:fl_advanced_tab_manager/dockx_ads/core/enums/dock_node.dart';
+import 'package:fl_advanced_tab_manager/dockx_ads/core/enums/split_node.dart';
+import 'package:fl_advanced_tab_manager/dockx_ads/core/split_node.dart';
 import 'package:fl_advanced_tab_manager/dockx_ads/core/theme.dart';
 import 'package:fl_advanced_tab_manager/dockx_ads/widgets/animate_blur.dart';
 import 'package:fl_advanced_tab_manager/dockx_ads/widgets/floating_panel.dart';
@@ -139,12 +144,14 @@ class _DockAdsState extends State<DockAds> {
               panelId: _flyPanelId!,
               title: widget.layout.registry.getById(_flyPanelId!).title,
               content: _buildPanelContent(_flyPanelId!),
+
+              // PIN: unhide to its declared side
               onPin: (side, id) {
-                final DockSide declared =
-                    widget.layout.registry.getById(id).position;
+                final declared = widget.layout.registry.getById(id).position;
                 setState(() {
                   widget.layout.removeFromAutoHidden(id);
-                  // put back to declared/target side inside containers
+                });
+                setState(() {
                   widget.layout
                       .unhideToSide(id, side: declared, activate: true);
                   _flySide = null;
@@ -152,6 +159,7 @@ class _DockAdsState extends State<DockAds> {
                   _simplifyTree();
                 });
               },
+
               onClose: () {
                 if (!mounted) return;
                 setState(() {
@@ -159,15 +167,33 @@ class _DockAdsState extends State<DockAds> {
                   _flyPanelId = null;
                 });
               },
-              onRemove: (id) {
-                _removePanelCompletely(id);
+
+              // NEW: remove from auto-hide (close button in header)
+              onRemove: (panelId) {
+                setState(() {
+                  widget.layout.removeFromAutoHidden(panelId);
+                  _flySide = null;
+                  _flyPanelId = null;
+                });
               },
-              onDragStart: (g, id) {
-                _drag.isDragging = true;
-                _drag.draggingPanelId = id;
-                setState(() {});
+
+              // IMPORTANT: close flyout as soon as drag really begins
+              onDragStart: (globalStart, panelId) {
+                setState(() {
+                  _drag.isDragging = true;
+                  _drag.draggingPanelId = panelId;
+                  _drag.targetKey = null; // clear stale target
+                  _drag.hoverRect = null;
+                  _drag.hoverZone = DropZone.none;
+                  // Close flyout immediately so zones under it receive pointer hits
+                  _flySide = null;
+                  _flyPanelId = null;
+                });
+                _updateHover(globalStart); // compute initial hover
               },
+
               onDragUpdate: _updateHover,
+
               onDragEnd: () {
                 if (_drag.hoverZone != DropZone.none &&
                     _drag.draggingPanelId != null) {
@@ -175,8 +201,8 @@ class _DockAdsState extends State<DockAds> {
                     final target = _containerByKey[_drag.targetKey!];
                     if (target != null) {
                       setState(() {
-                        widget.layout.autoHidden[_flySide!]!
-                            .remove(_drag.draggingPanelId);
+                        widget.layout
+                            .removeFromAutoHidden(_drag.draggingPanelId!);
                         _dockInto(
                             target, _drag.hoverZone, _drag.draggingPanelId!);
                         _simplifyTree();
@@ -186,31 +212,30 @@ class _DockAdsState extends State<DockAds> {
                     final side = _zoneToSide(_drag.hoverZone);
                     if (side != null) {
                       setState(() {
-                        widget.layout.autoHidden[_flySide!]!
-                            .remove(_drag.draggingPanelId);
+                        widget.layout
+                            .removeFromAutoHidden(_drag.draggingPanelId!);
                         _dockToEdge(_drag.draggingPanelId!, side);
                         _simplifyTree();
                       });
                     }
                   }
                 }
-                setState(() {
-                  _flySide = null;
-                  _flyPanelId = null;
-                });
                 _resetDrag();
               },
+
               style: widget.style,
             ),
           ),
 
         // Dock guides (cross + edges)
-        if (_drag.isDragging)
+        if (_drag.isDragging) ...[
           _DockGuidesOverlay(
             targetRect: _currentTargetRect(),
-            hoverZone: _drag.hoverZone,
+            hoverZone:
+                (_drag.targetKey != null) ? _drag.hoverZone : DropZone.none,
             style: widget.style,
           ),
+        ],
 
         // Floating windows on top
         ...List.generate(_floats.length, (i) {
@@ -328,6 +353,30 @@ class _DockAdsState extends State<DockAds> {
     );
   }
 
+  Rect? _dockHostRect() {
+    final rb = _hostKey.currentContext?.findRenderObject() as RenderBox?;
+    if (rb == null || !rb.attached || !rb.hasSize) return null;
+
+    final hasLeft =
+        (widget.layout.autoHidden[AutoSide.left] ?? const []).isNotEmpty;
+    final hasRight =
+        (widget.layout.autoHidden[AutoSide.right] ?? const []).isNotEmpty;
+    final hasBottom =
+        (widget.layout.autoHidden[AutoSide.bottom] ?? const []).isNotEmpty;
+
+    final padL = hasLeft ? widget.style.stripThickness : 0.0;
+    final padR = hasRight ? widget.style.stripThickness : 0.0;
+    final padB = hasBottom ? widget.style.stripThickness : 0.0;
+
+    final size = rb.size;
+    return Rect.fromLTWH(
+      padL,
+      0,
+      size.width - padL - padR,
+      size.height - padB,
+    );
+  }
+
   void _removePanelCompletely(String id) {
     // remove from containers
     _removePanelEverywhere(widget.layout.root, id);
@@ -377,19 +426,6 @@ class _DockAdsState extends State<DockAds> {
   Widget _buildPanelContent(String panelId) {
     final panel = widget.layout.registry.getById(panelId);
     return Builder(builder: (ctx) => panel.builder(ctx));
-  }
-
-  AutoSide _toAuto(DockSide s) {
-    switch (s) {
-      case DockSide.left:
-        return AutoSide.left;
-      case DockSide.right:
-        return AutoSide.right;
-      case DockSide.bottom:
-        return AutoSide.bottom;
-      case DockSide.center:
-        return AutoSide.bottom; // sensible fallback for center
-    }
   }
 
   Widget _buildNode(DockNode node) {
@@ -471,25 +507,6 @@ class _DockAdsState extends State<DockAds> {
     return const SizedBox.shrink();
   }
 
-  ContainerNode? _findFirstContainerBySide(DockNode node, DockSide side) {
-    ContainerNode? hit;
-    void walk(DockNode n) {
-      if (hit != null) return;
-      if (n is ContainerNode) {
-        if (n.side == side) {
-          hit = n;
-          return;
-        }
-      } else if (n is SplitNode) {
-        walk(n.a);
-        walk(n.b);
-      }
-    }
-
-    walk(node);
-    return hit;
-  }
-
   void floatPanel(String panelId, {Offset? originGlobal}) {
     if (!mounted) return;
     setState(() {
@@ -550,16 +567,22 @@ class _DockAdsState extends State<DockAds> {
     });
   }
 
+  Offset _globalToHost(Offset global) {
+    final rb = _hostKey.currentContext?.findRenderObject() as RenderBox?;
+    if (rb == null || !rb.attached || !rb.hasSize) return global;
+    return rb.globalToLocal(global);
+  }
+
   // When no container is hit, classify edges against the overlay host
   DropZone _classifyOverlayEdges(Rect rect, Offset p) {
     final w = rect.width, h = rect.height;
     final left = Rect.fromLTWH(rect.left, rect.top, w * 0.25, h);
     final right = Rect.fromLTWH(rect.left + w * 0.75, rect.top, w * 0.25, h);
-    final top = Rect.fromLTWH(rect.left, rect.top, w, h * 0.25);
+    // NO TOP band
     final bottom = Rect.fromLTWH(rect.left, rect.top + h * 0.75, w, h * 0.25);
+
     if (left.contains(p)) return DropZone.left;
     if (right.contains(p)) return DropZone.right;
-    if (top.contains(p)) return DropZone.top;
     if (bottom.contains(p)) return DropZone.bottom;
     return DropZone.none;
   }
@@ -569,8 +592,30 @@ class _DockAdsState extends State<DockAds> {
     GlobalKey? bestKey;
     DropZone zone = DropZone.none;
 
-    final dead = <GlobalKey>[];
+    final host = _dockHostRect();
+    final pHost = _globalToHost(global); // <<< convert once
 
+    // 1) Prefer edges when near bands (host-local comparisons!)
+    if (host != null) {
+      final nearLeft = (pHost.dx - host.left) <= IDETheme.edgeSnapBand;
+      final nearRight = (host.right - pHost.dx) <= IDETheme.edgeSnapBand;
+      final nearBottom = (host.bottom - pHost.dy) <= IDETheme.edgeSnapBand;
+
+      if (nearLeft || nearRight || nearBottom) {
+        bestRect = host;
+        bestKey = null; // EDGES MODE
+        zone = _classifyOverlayEdges(host, pHost);
+        setState(() {
+          _drag.hoverRect = bestRect;
+          _drag.hoverZone = zone;
+          _drag.targetKey = bestKey;
+        });
+        return;
+      }
+    }
+
+    // 2) Container hit-test (global coords as before)
+    final dead = <GlobalKey>[];
     for (final entry in _containerByKey.entries) {
       final key = entry.key;
       if (!_isKeyActive(key)) {
@@ -578,8 +623,7 @@ class _DockAdsState extends State<DockAds> {
         continue;
       }
 
-      final ctx = key.currentContext!;
-      final box = ctx.findRenderObject() as RenderBox;
+      final box = key.currentContext!.findRenderObject() as RenderBox;
       final rect = Rect.fromLTWH(
         box.localToGlobal(Offset.zero).dx,
         box.localToGlobal(Offset.zero).dy,
@@ -590,25 +634,20 @@ class _DockAdsState extends State<DockAds> {
       if (rect.contains(global)) {
         bestRect = rect;
         bestKey = key;
-        zone = _classifyZone(rect, global);
+        zone = _classifyZone(rect, global); // container cross
         break;
       }
     }
-
-    // prune dead keys in both maps
     for (final k in dead) {
       final node = _containerByKey.remove(k);
       if (node != null) _keyByContainer.remove(node);
     }
 
-    // No container hit → fallback to overlay host (edge docking)
-    if (bestRect == null) {
-      final host = _overlayHostRect();
-      if (host != null) {
-        bestRect = host;
-        bestKey = null;
-        zone = _classifyOverlayEdges(host, global);
-      }
+    // 3) Fallback to host (not near edges) just to show something
+    if (bestRect == null && host != null) {
+      bestRect = host;
+      bestKey = null;
+      zone = DropZone.none; // no suggestion if not near bands or container
     }
 
     setState(() {
@@ -837,26 +876,17 @@ class _DockAdsState extends State<DockAds> {
   }
 
   Rect? _currentTargetRect() {
-    // Prefer current target if active
-    final tk = _drag.targetKey;
-    if (tk != null) {
-      final r = _rectForInOverlay(tk);
-      if (r != null) return r;
-
-      // prune immediately if stale
-      if (!_isKeyActive(tk)) {
-        final node = _containerByKey.remove(tk);
-        if (node != null) _keyByContainer.remove(node);
-        _drag.targetKey = null;
-      }
+    if (_drag.targetKey == null) {
+      return _dockHostRect(); // edges mode anchor
     }
+    final tk = _drag.targetKey!;
+    final r = _rectForInOverlay(tk);
+    if (r != null) return r;
 
-    // Fallback: first alive container
-    final alive = _firstAliveContainerRectInOverlay();
-    if (alive != null) return alive;
-
-    // Last resort: the overlay host itself
-    return _overlayHostRect();
+    final node = _containerByKey.remove(tk);
+    if (node != null) _keyByContainer.remove(node);
+    _drag.targetKey = null;
+    return _dockHostRect();
   }
 
   void _dockToEdge(String panelId, DockSide side) {
@@ -1017,71 +1047,105 @@ class _DockGuidesOverlay extends StatelessWidget {
   final Rect? targetRect;
   final DropZone hoverZone;
   final DockStyle style;
+  final bool edgesOnly;
 
   const _DockGuidesOverlay({
     required this.targetRect,
     required this.hoverZone,
     required this.style,
+    this.edgesOnly = false,
   });
 
   @override
   Widget build(BuildContext context) {
     if (targetRect == null) return const SizedBox.shrink();
     final r = targetRect!;
+
+    // Visuals
     const double s = 28.0; // button size
-    const double pad = 8.0;
+    const double pad = 8.0; // breathing room from edges
 
-    double clamp(double v, double min, double max) =>
-        v < min ? min : (v > max ? max : v);
+    // Reserve space that must not be overlapped
+    final double reserveTop = style.tabbarHeight; // tabbar area (containers)
+    final double reserveLeft = style.stripThickness; // auto-hide strip
+    final double reserveRight = style.stripThickness; // auto-hide strip
+    final double reserveBottom = style.stripThickness; // bottom strip
 
-    final minX = r.left + s / 2;
-    final maxX = r.right - s / 2;
-    final minY = r.top + s / 2;
-    final maxY = r.bottom - s / 2;
+    // Build an inner rect where buttons must live
+    final inner = Rect.fromLTRB(
+      r.left + reserveLeft + pad + s / 2,
+      r.top + reserveTop + pad + s / 2,
+      r.right - reserveRight - pad - s / 2,
+      r.bottom - reserveBottom - pad - s / 2,
+    );
 
-    final cx = clamp(r.left + r.width / 2, minX, maxX);
-    final cy = clamp(r.top + r.height / 2, minY, maxY);
+    if (inner.width < s || inner.height < s) {
+      // Area too tight → nothing to draw
+      return const SizedBox.shrink();
+    }
 
-    final leftX = clamp(r.left + pad + s / 2, minX, maxX);
-    final rightX = clamp(r.right - pad - s / 2, minX, maxX);
-    final topY = clamp(r.top + pad + s / 2, minY, maxY);
-    final bottomY = clamp(r.bottom - pad - s / 2, minY, maxY);
+    // Helpers
+    Offset clampPoint(Offset p) => Offset(
+          p.dx.clamp(inner.left, inner.right),
+          p.dy.clamp(inner.top, inner.bottom),
+        );
 
-    Widget btn(DropZone z, Widget icon, Offset center) {
+    Widget btn(DropZone z, IconData icon, Offset c) {
+      // Hide if outside inner rect (can happen on extreme sizes)
+      if (!inner.inflate(0.01).contains(c)) return const SizedBox.shrink();
+
       final sel = z == hoverZone;
       return Positioned(
-        left: center.dx - s / 2,
-        top: center.dy - s / 2,
+        left: c.dx - s / 2,
+        top: c.dy - s / 2,
         width: s,
         height: s,
         child: DecoratedBox(
           decoration: BoxDecoration(
             color: sel
-                ? (style.accent).withOpacity(.95)
-                : style.surface2.withOpacity(.85),
+                ? (style.accent).withValues(alpha: .95)
+                : style.surface2.withValues(alpha: .90),
             border: Border.all(color: style.border, width: 1),
-            borderRadius: BorderRadius.circular(4),
+            borderRadius: BorderRadius.circular(6),
+            boxShadow: const [
+              BoxShadow(color: Color(0x55000000), blurRadius: 10),
+            ],
           ),
-          child: icon,
+          child: Icon(icon, size: 14, color: style.text),
         ),
       );
     }
 
-    return IgnorePointer(
-      child: Stack(children: [
-        btn(DropZone.left, const Icon(WindowsIcons.dock_left),
-            Offset(leftX, cy)),
-        btn(DropZone.right, const Icon(WindowsIcons.dock_right),
-            Offset(rightX, cy)),
-        btn(
-            DropZone.top,
-            Transform.flip(
-                child: const Icon(WindowsIcons.dock_bottom), flipY: true),
-            Offset(cx, topY)),
-        btn(DropZone.bottom, const Icon(WindowsIcons.dock_bottom),
-            Offset(cx, bottomY)),
-        btn(DropZone.center, const Icon(WindowsIcons.dock), Offset(cx, cy)),
-      ]),
-    );
+    // Ideal centers
+    final cx = (inner.left + inner.right) / 2;
+    final cy = (inner.top + inner.bottom) / 2;
+
+    // Edge positions (kept inside inner)
+    final leftC = clampPoint(Offset(inner.left, cy));
+    final rightC = clampPoint(Offset(inner.right, cy));
+    final topC = clampPoint(Offset(cx, inner.top));
+    final bottomC = clampPoint(Offset(cx, inner.bottom));
+    final centerC = clampPoint(Offset(cx, cy));
+
+    final children = <Widget>[
+      // Left / Right
+      btn(DropZone.left, WindowsIcons.dock_left, leftC),
+      btn(DropZone.right, WindowsIcons.dock_right, rightC),
+
+      // Top / Bottom
+      btn(
+        DropZone.top,
+        // Flip the bottom icon to point up
+        WindowsIcons.dock_bottom,
+        topC.translate(0, 0),
+      ),
+      btn(DropZone.bottom, WindowsIcons.dock_bottom, bottomC),
+    ];
+
+    if (!edgesOnly) {
+      children.add(btn(DropZone.center, WindowsIcons.dock, centerC));
+    }
+
+    return IgnorePointer(child: Stack(children: children));
   }
 }

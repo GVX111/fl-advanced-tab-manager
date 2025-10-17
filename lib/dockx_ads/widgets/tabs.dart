@@ -1,9 +1,8 @@
 // lib/ui/tabs.dart
-import 'dart:ui' as ui show PointerDeviceKind;
-import 'package:flutter/gestures.dart' show kSecondaryMouseButton;
+import 'package:fl_advanced_tab_manager/dockx_ads/core/container_node.dart';
+import 'package:fl_advanced_tab_manager/dockx_ads/core/dock_panel_registry.dart';
+import 'package:fl_advanced_tab_manager/dockx_ads/core/theme.dart';
 import 'package:fluent_ui/fluent_ui.dart';
-import '../core/models.dart';
-import '../core/theme.dart';
 
 class TabsContainer extends StatefulWidget {
   final ContainerNode node;
@@ -174,7 +173,7 @@ class _TabButtonState extends State<_TabButton> {
     final borderBottomColor =
         widget.isActive ? widget.style.background : widget.style.border;
     final borderTopColor = _hover
-        ? (widget.style.accent ?? widget.style.border)
+        ? (widget.style.accent)
         : widget.style.border; // light accent on hover
 
     return MouseRegion(

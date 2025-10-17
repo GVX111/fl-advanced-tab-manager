@@ -1,183 +1,11 @@
 import 'dart:convert';
-
+import 'package:fl_advanced_tab_manager/dockx_ads/core/container_node.dart';
+import 'package:fl_advanced_tab_manager/dockx_ads/core/dock_node.dart';
+import 'package:fl_advanced_tab_manager/dockx_ads/core/dock_panel_registry.dart';
 import 'package:fl_advanced_tab_manager/dockx_ads/core/drag_model.dart';
-import 'package:fl_advanced_tab_manager/dockx_ads/core/persistence.dart';
-import 'package:flutter/widgets.dart';
-
-class DockPanelSpec {
-  final String id;
-  final String title;
-  final Widget Function(BuildContext) builder;
-
-  /// Preferred side (for restore / pin).
-  final DockSide position;
-
-  const DockPanelSpec({
-    required this.id,
-    required this.title,
-    required this.builder,
-    this.position = DockSide.center,
-  });
-}
-
-class DockPanelRuntime {
-  final String id;
-  final String title;
-  final WidgetBuilder builder;
-  final DockSide position;
-  DockPanelRuntime({
-    required this.id,
-    required this.title,
-    required this.builder,
-    required this.position,
-  });
-}
-
-enum DockNodeKind { split, container }
-
-enum SplitAxis { horizontal, vertical }
-
-enum DockSide { left, right, bottom, center }
-
-abstract class DockNode {
-  DockNodeKind get kind;
-  Map<String, dynamic> toJson();
-}
-
-class SplitNode extends DockNode {
-  final SplitAxis axis;
-  double ratio;
-  DockNode a;
-  DockNode b;
-  SplitNode({
-    required this.axis,
-    required this.ratio,
-    required this.a,
-    required this.b,
-  });
-
-  @override
-  DockNodeKind get kind => DockNodeKind.split;
-
-  @override
-  Map<String, dynamic> toJson() => {
-        'kind': 'split',
-        'axis': axis.name,
-        'ratio': ratio,
-        'a': a.toJson(),
-        'b': b.toJson(),
-      };
-
-  static SplitNode fromJson(Map<String, dynamic> j, DockPanelRegistry reg) =>
-      SplitNode(
-        axis: j['axis'] == 'horizontal'
-            ? SplitAxis.horizontal
-            : SplitAxis.vertical,
-        ratio: (j['ratio'] as num).toDouble(),
-        a: DockLayout._nodeFromJson(j['a'], reg),
-        b: DockLayout._nodeFromJson(j['b'], reg),
-      );
-}
-
-class ContainerNode extends DockNode {
-  final List<String> panelIds;
-  int activeIndex;
-  DockSide side;
-
-  ContainerNode({
-    required List<String> panelIds,
-    this.activeIndex = 0,
-    this.side = DockSide.center,
-  }) : panelIds = List<String>.from(panelIds) {
-    _clampActive();
-  }
-
-  bool get isEmpty => panelIds.isEmpty;
-
-  /// If empty, keep 0; if out of range, clamp.
-  void _clampActive() {
-    if (panelIds.isEmpty) {
-      activeIndex = 0;
-      return;
-    }
-    if (activeIndex < 0) activeIndex = 0;
-    if (activeIndex >= panelIds.length) activeIndex = panelIds.length - 1;
-  }
-
-  /// Safe setter for active tab by id; no-ops if not present.
-  void activateById(String id) {
-    final idx = panelIds.indexOf(id);
-    if (idx >= 0) {
-      activeIndex = idx;
-      _clampActive();
-    }
-  }
-
-  @override
-  DockNodeKind get kind => DockNodeKind.container;
-
-  @override
-  Map<String, dynamic> toJson() => {
-        'kind': 'container',
-        'panelIds': panelIds,
-        'activeIndex': activeIndex,
-        'side': side.name,
-      };
-
-  static ContainerNode fromJson(Map<String, dynamic> j) => ContainerNode(
-        panelIds: List<String>.from((j['panelIds'] as List).cast<String>()),
-        activeIndex: (j['activeIndex'] as num?)?.toInt() ?? 0,
-        side: _dockSideFromStr(j['side'] as String?),
-      ).._clampActive();
-
-  static DockSide _dockSideFromStr(String? s) {
-    switch (s) {
-      case 'left':
-        return DockSide.left;
-      case 'right':
-        return DockSide.right;
-      case 'bottom':
-        return DockSide.bottom;
-      case 'center':
-      default:
-        return DockSide.center;
-    }
-  }
-}
-
-class DockPanelRegistry {
-  final Map<String, DockPanelRuntime> _panels = {};
-
-  void register(DockPanelSpec s) {
-    _panels[s.id] = DockPanelRuntime(
-      id: s.id,
-      title: s.title,
-      builder: s.builder,
-      position: s.position,
-    );
-  }
-
-  void addAll(List<DockPanelSpec> specs) {
-    for (final s in specs) {
-      register(s);
-    }
-  }
-
-  bool has(String id) => _panels.containsKey(id);
-
-  void unregister(String id) => _panels.remove(id);
-  void clear() => _panels.clear();
-
-  DockPanelRuntime getById(String id) {
-    final p = _panels[id];
-    if (p == null) {
-      throw ArgumentError('Unknown panel id: $id');
-    }
-    return p;
-  }
-
-  Iterable<String> get ids => _panels.keys;
-}
+import 'package:fl_advanced_tab_manager/dockx_ads/core/enums/dock_node.dart';
+import 'package:fl_advanced_tab_manager/dockx_ads/core/enums/split_node.dart';
+import 'package:fl_advanced_tab_manager/dockx_ads/core/split_node.dart';
 
 class DockLayout {
   DockNode root;
@@ -275,7 +103,7 @@ class DockLayout {
   /// Import a perspective (tree + autoHidden); prunes hidden ids from containers.
   static DockLayout fromJson(Map<String, dynamic> j, DockPanelRegistry reg) {
     final layout = DockLayout(
-      root: _nodeFromJson(j['root'], reg),
+      root: nodeFromJson(j['root'], reg),
       registry: reg,
     );
 
@@ -294,7 +122,7 @@ class DockLayout {
     return layout;
   }
 
-  static DockNode _nodeFromJson(Map<String, dynamic> j, DockPanelRegistry reg) {
+  static DockNode nodeFromJson(Map<String, dynamic> j, DockPanelRegistry reg) {
     final k = j['kind'];
     if (k == 'split') return SplitNode.fromJson(j, reg);
     if (k == 'container') return ContainerNode.fromJson(j);
@@ -457,7 +285,7 @@ class DockLayout {
       final idx = c.panelIds.indexOf(id);
       if (idx >= 0) {
         c.panelIds.removeAt(idx);
-        c._clampActive();
+        c.clampActive();
         removed = true;
         if (!removeAll) return;
       }

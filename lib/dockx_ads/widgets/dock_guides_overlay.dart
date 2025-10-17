@@ -1,7 +1,6 @@
 import 'package:fl_advanced_tab_manager/dockx_ads/core/drag_model.dart';
+import 'package:fl_advanced_tab_manager/dockx_ads/core/theme.dart';
 import 'package:fluent_ui/fluent_ui.dart';
-import '../core/models.dart';
-import '../core/theme.dart';
 
 class DockGuidesOverlay extends StatelessWidget {
   final Rect? targetRect;
@@ -32,8 +31,8 @@ class DockGuidesOverlay extends StatelessWidget {
         child: DecoratedBox(
           decoration: BoxDecoration(
             color: sel
-                ? (style.accent ?? const Color(0xFF0078D4)).withOpacity(.95)
-                : style.surface2.withOpacity(.85),
+                ? (style.accent).withValues(alpha: .95)
+                : style.surface2.withValues(alpha: .85),
             border: Border.all(color: style.border, width: 1),
             borderRadius: BorderRadius.circular(4),
           ),

@@ -1,0 +1,1 @@
+enum DockNodeKind { split, container }

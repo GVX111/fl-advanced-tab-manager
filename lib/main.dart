@@ -1,8 +1,10 @@
-import 'dart:convert';
+import 'package:fl_advanced_tab_manager/dockx_ads/core/dock_layout.dart';
+import 'package:fl_advanced_tab_manager/dockx_ads/core/dock_panel_registry.dart';
+import 'package:fl_advanced_tab_manager/dockx_ads/core/dock_panel_spec.dart';
+import 'package:fl_advanced_tab_manager/dockx_ads/core/enums/split_node.dart';
 import 'package:fl_advanced_tab_manager/dockx_ads/core/persistence.dart';
 import 'package:flutter/services.dart'; // Clipboard
 import 'package:fluent_ui/fluent_ui.dart';
-import 'dockx_ads/core/models.dart';
 import 'dockx_ads/widgets/dock_view.dart';
 import 'dockx_ads/core/theme.dart';
 
@@ -202,7 +204,6 @@ class _HomeState extends State<_Home> {
   Widget build(BuildContext context) {
     return NavigationView(
       appBar: NavigationAppBar(
-        title: const Text('DockX ADS – Demo'),
         actions: SizedBox(
           height: 40, // keep command bar constrained
           child: CommandBar(
@@ -298,8 +299,8 @@ class _Inspector extends StatelessWidget {
   }
 }
 
-class _Problems extends StatelessWidget {
-  const _Problems();
+class Problems extends StatelessWidget {
+  const Problems();
   @override
   Widget build(BuildContext context) {
     return Column(children: const [

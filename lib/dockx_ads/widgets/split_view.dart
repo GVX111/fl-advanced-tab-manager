@@ -1,6 +1,7 @@
+import 'package:fl_advanced_tab_manager/dockx_ads/core/enums/dock_node.dart';
+import 'package:fl_advanced_tab_manager/dockx_ads/core/split_node.dart';
+import 'package:fl_advanced_tab_manager/dockx_ads/core/theme.dart';
 import 'package:fluent_ui/fluent_ui.dart';
-import '../core/models.dart';
-import '../core/theme.dart';
 
 class SplitView extends StatefulWidget {
   final SplitNode node;

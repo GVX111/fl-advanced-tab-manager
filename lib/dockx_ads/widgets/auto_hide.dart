@@ -1,5 +1,4 @@
 import 'package:fluent_ui/fluent_ui.dart';
-import 'package:flutter/widgets.dart';
 import '../core/drag_model.dart';
 import '../core/theme.dart';
 
@@ -519,14 +518,15 @@ class _AutoHideFlyoutState extends State<AutoHideFlyout> {
 
 // ======= header and grips (unchanged, theme-aware) =================
 
-class _FlyoutHeader extends StatelessWidget {
+class _FlyoutHeader extends StatefulWidget {
   final String title;
   final DockStyle style;
-  final void Function(Offset pos) onDown;
-  final void Function(Offset pos) onMove;
-  final VoidCallback onUp;
+  final void Function(Offset pos) onDown; // called once when drag really begins
+  final void Function(Offset pos) onMove; // continuous while dragging
+  final VoidCallback onUp; // when drag ends
   final VoidCallback onPin;
   final VoidCallback onRemove;
+
   const _FlyoutHeader({
     required this.title,
     required this.style,
@@ -538,40 +538,82 @@ class _FlyoutHeader extends StatelessWidget {
   });
 
   @override
+  State<_FlyoutHeader> createState() => _FlyoutHeaderState();
+}
+
+class _FlyoutHeaderState extends State<_FlyoutHeader> {
+  static const _dragThreshold = 6.0;
+
+  Offset? _downGlobal;
+  bool _dragging = false;
+
+  // Guard so buttons don’t start a drag
+  bool _pointerIsOverButton = false;
+
+  @override
   Widget build(BuildContext context) {
-    Offset? down;
     return Listener(
       onPointerDown: (e) {
-        down = e.position;
-        onDown(e.position);
+        _downGlobal = e.position;
+        _dragging = false;
+        _pointerIsOverButton = false; // will be set by button MouseRegions
       },
       onPointerMove: (e) {
-        if (down != null) onMove(e.position);
+        if (_downGlobal == null || _pointerIsOverButton) return;
+
+        if (!_dragging) {
+          // Don’t start a drag until threshold is exceeded
+          if ((e.position - _downGlobal!).distance > _dragThreshold) {
+            _dragging = true;
+            widget.onDown(_downGlobal!); // begin drag (report initial pos)
+          }
+        }
+        if (_dragging) {
+          widget.onMove(e.position); // live drag updates
+        }
       },
       onPointerUp: (_) {
-        down = null;
-        onUp();
+        if (_dragging) {
+          widget.onUp(); // finish drag
+        }
+        _downGlobal = null;
+        _dragging = false;
+        _pointerIsOverButton = false;
       },
       child: Container(
         height: 28,
-        color: style.surface,
+        color: widget.style.surface,
         child: Row(
           children: [
             const SizedBox(width: 8),
             Expanded(
               child: Text(
-                title,
-                style: TextStyle(color: style.text, fontSize: 12),
+                widget.title,
+                style: TextStyle(color: widget.style.text, fontSize: 12),
                 overflow: TextOverflow.ellipsis,
               ),
             ),
-            IconButton(
-              icon: Icon(style.iconPin, size: 12, color: style.text),
-              onPressed: onPin,
+
+            // Pin button – protect from starting a drag
+            MouseRegion(
+              onEnter: (_) => _pointerIsOverButton = true,
+              onExit: (_) => _pointerIsOverButton = false,
+              child: IconButton(
+                icon: Icon(widget.style.iconPin,
+                    size: 12, color: widget.style.text),
+                onPressed: widget.onPin,
+              ),
             ),
-            IconButton(
-              icon: Icon(style.iconClose, size: 12, color: style.text),
-              onPressed: onRemove,
+
+            // Close/Remove – protect from starting a drag
+            MouseRegion(
+              onEnter: (_) => _pointerIsOverButton = true,
+              onExit: (_) => _pointerIsOverButton = false,
+              child: IconButton(
+                icon: Icon(widget.style.iconClose,
+                    size: 12, color: widget.style.text),
+                onPressed: widget.onRemove,
+              ),
             ),
           ],
         ),
