@@ -304,9 +304,10 @@ class AutoHideFlyout extends StatefulWidget {
   final Widget content;
   final void Function(AutoSide side, String panelId) onPin;
   final void Function() onClose;
-  final void Function(Offset globalStart) onDragStart;
+  final void Function(Offset globalStart, String panelId) onDragStart;
   final void Function(Offset globalPos) onDragUpdate;
   final VoidCallback onDragEnd;
+  final void Function(String panelId) onRemove;
   final DockStyle style;
 
   const AutoHideFlyout({
@@ -317,6 +318,7 @@ class AutoHideFlyout extends StatefulWidget {
     required this.content,
     required this.onPin,
     required this.onClose,
+    required this.onRemove,
     required this.onDragStart,
     required this.onDragUpdate,
     required this.onDragEnd,
@@ -424,7 +426,7 @@ class _AutoHideFlyoutState extends State<AutoHideFlyout> {
       style: widget.style,
       onDown: (pos) {
         down = pos;
-        widget.onDragStart(pos);
+        widget.onDragStart(pos, widget.panelId);
       },
       onMove: (pos) {
         if (down != null) widget.onDragUpdate(pos);
@@ -434,7 +436,7 @@ class _AutoHideFlyoutState extends State<AutoHideFlyout> {
         widget.onDragEnd();
       },
       onPin: () => widget.onPin(widget.side, widget.panelId),
-      onClose: _requestClose,
+      onRemove: () => widget.onRemove(widget.panelId),
     );
 
     final body = Container(
@@ -524,7 +526,7 @@ class _FlyoutHeader extends StatelessWidget {
   final void Function(Offset pos) onMove;
   final VoidCallback onUp;
   final VoidCallback onPin;
-  final VoidCallback onClose;
+  final VoidCallback onRemove;
   const _FlyoutHeader({
     required this.title,
     required this.style,
@@ -532,7 +534,7 @@ class _FlyoutHeader extends StatelessWidget {
     required this.onMove,
     required this.onUp,
     required this.onPin,
-    required this.onClose,
+    required this.onRemove,
   });
 
   @override
@@ -569,7 +571,7 @@ class _FlyoutHeader extends StatelessWidget {
             ),
             IconButton(
               icon: Icon(style.iconClose, size: 12, color: style.text),
-              onPressed: onClose,
+              onPressed: onRemove,
             ),
           ],
         ),

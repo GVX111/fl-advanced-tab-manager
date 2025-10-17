@@ -1,11 +1,10 @@
+import 'package:fl_advanced_tab_manager/dockx_ads/core/drag_model.dart';
+import 'package:fl_advanced_tab_manager/dockx_ads/core/models.dart';
+import 'package:fl_advanced_tab_manager/dockx_ads/core/theme.dart';
 import 'package:fl_advanced_tab_manager/dockx_ads/widgets/animate_blur.dart';
 import 'package:fl_advanced_tab_manager/dockx_ads/widgets/floating_panel.dart';
 import 'package:fluent_ui/fluent_ui.dart';
-import 'package:flutter/widgets.dart';
 
-import '../core/models.dart';
-import '../core/drag_model.dart';
-import '../core/theme.dart';
 import 'split_view.dart';
 import 'tabs.dart';
 import 'drag_overlay.dart';
@@ -33,11 +32,6 @@ class _DockAdsState extends State<DockAds> {
 
   // Container lookups
   final Map<GlobalKey, ContainerNode> _containerByKey = {};
-  final Map<AutoSide, List<String>> _autoHidden = {
-    AutoSide.left: [],
-    AutoSide.right: [],
-    AutoSide.bottom: [],
-  };
 
   // Stable key per ContainerNode (so comparisons during drag stay valid)
   final Map<ContainerNode, GlobalKey> _keyByContainer = {};
@@ -57,16 +51,19 @@ class _DockAdsState extends State<DockAds> {
 
   @override
   Widget build(BuildContext context) {
-    final hasLeft = (_autoHidden[AutoSide.left] ?? const []).isNotEmpty;
-    final hasRight = (_autoHidden[AutoSide.right] ?? const []).isNotEmpty;
-    final hasBottom = (_autoHidden[AutoSide.bottom] ?? const []).isNotEmpty;
+    final hasLeft =
+        (widget.layout.autoHidden[AutoSide.left] ?? const []).isNotEmpty;
+    final hasRight =
+        (widget.layout.autoHidden[AutoSide.right] ?? const []).isNotEmpty;
+    final hasBottom =
+        (widget.layout.autoHidden[AutoSide.bottom] ?? const []).isNotEmpty;
 
     final content = Stack(
       key: _hostKey,
       fit: StackFit.expand,
       children: [
         AutoHideStrip(
-          hidden: _autoHidden,
+          hidden: widget.layout.autoHidden,
           titleOf: (id) => widget.layout.registry.getById(id).title,
           onShowFlyout: (side, id) {
             if (!mounted) return;
@@ -145,19 +142,11 @@ class _DockAdsState extends State<DockAds> {
               onPin: (side, id) {
                 final DockSide declared =
                     widget.layout.registry.getById(id).position;
-                final DockSide targetSide = declared;
-
-                _removePanelEverywhere(widget.layout.root, id);
-                final bucket =
-                    _findFirstContainerBySide(widget.layout.root, targetSide);
                 setState(() {
-                  if (bucket != null) {
-                    bucket.panelIds.add(id);
-                    bucket.activeIndex = bucket.panelIds.length - 1;
-                  } else {
-                    _dockToEdge(id, targetSide);
-                  }
-                  _autoHidden[side]?.remove(id);
+                  widget.layout.removeFromAutoHidden(id);
+                  // put back to declared/target side inside containers
+                  widget.layout
+                      .unhideToSide(id, side: declared, activate: true);
                   _flySide = null;
                   _flyPanelId = null;
                   _simplifyTree();
@@ -170,9 +159,12 @@ class _DockAdsState extends State<DockAds> {
                   _flyPanelId = null;
                 });
               },
-              onDragStart: (g) {
+              onRemove: (id) {
+                _removePanelCompletely(id);
+              },
+              onDragStart: (g, id) {
                 _drag.isDragging = true;
-                _drag.draggingPanelId = _flyPanelId;
+                _drag.draggingPanelId = id;
                 setState(() {});
               },
               onDragUpdate: _updateHover,
@@ -183,7 +175,8 @@ class _DockAdsState extends State<DockAds> {
                     final target = _containerByKey[_drag.targetKey!];
                     if (target != null) {
                       setState(() {
-                        _autoHidden[_flySide!]!.remove(_drag.draggingPanelId);
+                        widget.layout.autoHidden[_flySide!]!
+                            .remove(_drag.draggingPanelId);
                         _dockInto(
                             target, _drag.hoverZone, _drag.draggingPanelId!);
                         _simplifyTree();
@@ -193,7 +186,8 @@ class _DockAdsState extends State<DockAds> {
                     final side = _zoneToSide(_drag.hoverZone);
                     if (side != null) {
                       setState(() {
-                        _autoHidden[_flySide!]!.remove(_drag.draggingPanelId);
+                        widget.layout.autoHidden[_flySide!]!
+                            .remove(_drag.draggingPanelId);
                         _dockToEdge(_drag.draggingPanelId!, side);
                         _simplifyTree();
                       });
@@ -334,6 +328,30 @@ class _DockAdsState extends State<DockAds> {
     );
   }
 
+  void _removePanelCompletely(String id) {
+    // remove from containers
+    _removePanelEverywhere(widget.layout.root, id);
+
+    // remove from auto-hide strips
+    for (final s in widget.layout.autoHidden.keys) {
+      widget.layout.autoHidden[s]!.remove(id);
+    }
+
+    // remove floating copy if present
+    _floats.removeWhere((f) => f.panelId == id);
+
+    // close flyout if we’re showing that panel
+    if (_flyPanelId == id) {
+      _flyPanelId = null;
+      _flySide = null;
+    }
+
+    // collapse empties, repaint
+    setState(() {
+      _simplifyTree();
+    });
+  }
+
   /// First alive container’s rect (overlay coords), or null.
   Rect? _firstAliveContainerRectInOverlay() {
     for (final k in _containerByKey.keys) {
@@ -405,21 +423,14 @@ class _DockAdsState extends State<DockAds> {
             style: widget.style,
             onClose: (i) {
               if (!mounted) return;
-              setState(() {
-                node.panelIds.removeAt(i);
-                _simplifyTree();
-              });
+              final id = node.panelIds[i];
+              _removePanelCompletely(id);
             },
             onAutoHide: (panelId) {
               if (!mounted) return;
               setState(() {
-                _removePanelEverywhere(widget.layout.root, panelId);
-                final DockSide declared =
-                    widget.layout.registry.getById(panelId).position;
-                final AutoSide strip = (declared == DockSide.center)
-                    ? AutoSide.left
-                    : _toAuto(declared);
-                (_autoHidden[strip] ??= <String>[]).add(panelId);
+                widget.layout
+                    .autoHide(panelId); // will pick declared/preferred side
                 _simplifyTree();
               });
             },
@@ -429,13 +440,8 @@ class _DockAdsState extends State<DockAds> {
                 _removePanelEverywhere(widget.layout.root, panelId);
 
                 const w = 420.0, h = 300.0;
-                final ob = _overlayBox();
-                final screenCenter =
-                    ob?.size.center(Offset.zero) ?? const Offset(640, 360);
-                final anchor = startGlobal ?? screenCenter;
-
                 final desired =
-                    anchor - const Offset(w / 2, 36); // title under cursor
+                    startGlobal - const Offset(w / 2, 36); // title under cursor
                 final clamped = _clampFloatPos(desired, const Size(w, h));
                 _floats.add(_FloatWin(
                   panelId: panelId,
@@ -613,8 +619,8 @@ class _DockAdsState extends State<DockAds> {
   }
 
   void _removeFromAllStrips(String id) {
-    for (final side in _autoHidden.keys) {
-      _autoHidden[side]!.remove(id);
+    for (final side in widget.layout.autoHidden.keys) {
+      widget.layout.autoHidden[side]!.remove(id);
     }
   }
 

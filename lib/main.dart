@@ -56,8 +56,8 @@ class _HomeState extends State<_Home> {
   // ----------------- Export / Import helpers -----------------
 
   Future<void> _showExportDialog() async {
-    final jsonStr = jsonEncode(layout.toJson());
-    final controller = TextEditingController(text: jsonStr);
+    final json = layout.exportPerspectiveJson();
+    final controller = TextEditingController(text: json);
     await showDialog(
       context: context,
       builder: (_) => ContentDialog(
@@ -111,6 +111,8 @@ class _HomeState extends State<_Home> {
           FilledButton(
             child: const Text('Import'),
             onPressed: () {
+              Navigator.pop(context);
+
               final imported = reg.importJson(
                 controller.text,
                 specFactory: (id) {
@@ -127,8 +129,6 @@ class _HomeState extends State<_Home> {
                 },
                 missingPanelPolicy: MissingPanelPolicy.registerPlaceholder,
               );
-
-// apply
               setState(() {
                 layout = imported;
               });

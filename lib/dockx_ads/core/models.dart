@@ -1,3 +1,6 @@
+import 'dart:convert';
+
+import 'package:fl_advanced_tab_manager/dockx_ads/core/drag_model.dart';
 import 'package:fl_advanced_tab_manager/dockx_ads/core/persistence.dart';
 import 'package:flutter/widgets.dart';
 
@@ -185,7 +188,69 @@ class DockLayout {
 
   DockLayout({required this.root, required this.registry});
 
-  /// ✅ NEW: create a truly empty layout (safe root).
+  // ---- Auto Hide state (source of truth) ----
+  final Map<AutoSide, List<String>> autoHidden = {
+    AutoSide.left: <String>[],
+    AutoSide.right: <String>[],
+    AutoSide.bottom: <String>[],
+  };
+
+  // ---- helpers for auto-hide ----
+
+  bool isAutoHidden(String id) =>
+      autoHidden.values.any((list) => list.contains(id));
+
+  /// Hide a panel to a strip (default to its preferred / declared side).
+  void autoHide(String id, {AutoSide? side}) {
+    // remove from containers first
+    removePanel(id);
+    final DockSide declared = registry.getById(id).position;
+    final AutoSide strip = side ??
+        (declared == DockSide.center ? AutoSide.left : _toAuto(declared));
+    autoHidden[strip] ??= <String>[];
+    if (!autoHidden[strip]!.contains(id)) {
+      autoHidden[strip]!.add(id);
+    }
+  }
+
+  /// Remove a panel from all strips (if present).
+  void removeFromAutoHidden(String id) {
+    for (final s in autoHidden.keys) {
+      autoHidden[s]!.remove(id);
+    }
+  }
+
+  /// Move an auto-hidden id to another strip (optionally to an index).
+  void moveAutoHidden(String id, AutoSide to, {int? at}) {
+    if (!isAutoHidden(id)) return;
+    removeFromAutoHidden(id);
+    final list = autoHidden[to] ??= <String>[];
+    final i = (at ?? list.length).clamp(0, list.length);
+    list.insert(i, id);
+  }
+
+  /// Unhide: insert into a container by DockSide (or its preferred side).
+  void unhideToSide(String id, {DockSide? side, bool activate = true}) {
+    removeFromAutoHidden(id);
+    side ??= preferredSide[id] ?? registry.getById(id).position;
+    final c = _ensureContainerForSide(side);
+    c.panelIds.add(id);
+    if (activate) c.activateById(id);
+  }
+
+  AutoSide _toAuto(DockSide s) {
+    switch (s) {
+      case DockSide.left:
+        return AutoSide.left;
+      case DockSide.right:
+        return AutoSide.right;
+      case DockSide.bottom:
+        return AutoSide.bottom;
+      case DockSide.center:
+        return AutoSide.left; // fallback
+    }
+  }
+
   factory DockLayout.empty(DockPanelRegistry reg) {
     return DockLayout(
       root: ContainerNode(panelIds: const [], side: DockSide.center),
@@ -193,16 +258,85 @@ class DockLayout {
     );
   }
 
-  Map<String, dynamic> toJson() => {'root': root.toJson()};
+  // ---------- PERSISTENCE (EXPORT / IMPORT) ----------
 
-  static DockLayout fromJson(Map<String, dynamic> j, DockPanelRegistry reg) =>
-      DockLayout(root: _nodeFromJson(j['root'], reg), registry: reg);
+  /// Export full perspective, including auto-hidden strips.
+  Map<String, dynamic> toJson() => {
+        'root': root.toJson(),
+        'autoHidden': {
+          'left': List<String>.from(autoHidden[AutoSide.left] ?? const []),
+          'right': List<String>.from(autoHidden[AutoSide.right] ?? const []),
+          'bottom': List<String>.from(autoHidden[AutoSide.bottom] ?? const []),
+        },
+      };
+
+  String exportPerspectiveJson() => jsonEncode(toJson());
+
+  /// Import a perspective (tree + autoHidden); prunes hidden ids from containers.
+  static DockLayout fromJson(Map<String, dynamic> j, DockPanelRegistry reg) {
+    final layout = DockLayout(
+      root: _nodeFromJson(j['root'], reg),
+      registry: reg,
+    );
+
+    // Load autoHidden (safe defaults)
+    final ah = (j['autoHidden'] as Map?) ?? const {};
+    layout.autoHidden[AutoSide.left] =
+        List<String>.from((ah['left'] ?? const []) as List);
+    layout.autoHidden[AutoSide.right] =
+        List<String>.from((ah['right'] ?? const []) as List);
+    layout.autoHidden[AutoSide.bottom] =
+        List<String>.from((ah['bottom'] ?? const []) as List);
+
+    // Remove hidden ids from containers so they truly move to strips
+    _pruneAutoHiddenPanels(layout);
+
+    return layout;
+  }
 
   static DockNode _nodeFromJson(Map<String, dynamic> j, DockPanelRegistry reg) {
     final k = j['kind'];
     if (k == 'split') return SplitNode.fromJson(j, reg);
     if (k == 'container') return ContainerNode.fromJson(j);
     throw ArgumentError('Unknown node kind: $k');
+  }
+
+  static void _pruneAutoHiddenPanels(DockLayout layout) {
+    final hiddenIds = <String>{
+      ...layout.autoHidden[AutoSide.left]!,
+      ...layout.autoHidden[AutoSide.right]!,
+      ...layout.autoHidden[AutoSide.bottom]!,
+    };
+    if (hiddenIds.isEmpty) return;
+
+    void removeEverywhere(DockNode n) {
+      if (n is ContainerNode) {
+        n.panelIds.removeWhere(hiddenIds.contains);
+        if (n.activeIndex >= n.panelIds.length) {
+          n.activeIndex = n.panelIds.isEmpty ? 0 : n.panelIds.length - 1;
+        }
+      } else if (n is SplitNode) {
+        removeEverywhere(n.a);
+        removeEverywhere(n.b);
+      }
+    }
+
+    DockNode collapseEmpty(DockNode n) {
+      if (n is SplitNode) {
+        n.a = collapseEmpty(n.a);
+        n.b = collapseEmpty(n.b);
+        if (n.a is ContainerNode && (n.a as ContainerNode).panelIds.isEmpty) {
+          return n.b;
+        }
+        if (n.b is ContainerNode && (n.b as ContainerNode).panelIds.isEmpty) {
+          return n.a;
+        }
+      }
+      return n;
+    }
+
+    removeEverywhere(layout.root);
+    layout.root = collapseEmpty(layout.root);
   }
 
   /// Old helper kept for compatibility. Now safe even if all lists are empty.
@@ -214,7 +348,6 @@ class DockLayout {
     List<String> bottom = const [],
     double bottomFraction = 0.35,
   }) {
-    // If absolutely nothing was provided, return an empty layout.
     final noPanels =
         left.isEmpty && center.isEmpty && right.isEmpty && bottom.isEmpty;
     if (noPanels) {
@@ -224,7 +357,6 @@ class DockLayout {
     ContainerNode buildTabs(List<String> ids, DockSide side) =>
         ContainerNode(panelIds: List<String>.from(ids), side: side);
 
-    // Prefer provided center; if center is empty but others exist, start center empty.
     DockNode centerNode = buildTabs(center, DockSide.center);
 
     DockNode lr = centerNode;
@@ -257,7 +389,6 @@ class DockLayout {
 
     final layout = DockLayout(root: root, registry: reg);
 
-    // Record startup sides for “pin restore”.
     for (final id in left.reversed) {
       layout.preferredSide[id] = DockSide.left;
     }
@@ -274,11 +405,8 @@ class DockLayout {
     return layout;
   }
 
-  /// ---------- RUNTIME HELPERS (add/remove/activate) ----------
+  // ---------- RUNTIME HELPERS (add/remove/activate) ----------
 
-  /// Add a panel by id. If the layout is empty, it goes to center.
-  /// If a container for the requested side exists, it appends there.
-  /// Otherwise it will split from center to create the requested side.
   void addPanel(
     String id, {
     DockSide? side,
@@ -292,7 +420,6 @@ class DockLayout {
     side ??= registry.getById(id).position;
     preferredSide[id] = side;
 
-    // Find an existing container for that side; otherwise ensure structure.
     final container = _ensureContainerForSide(side);
     final insertAt = atIndex == null
         ? container.panelIds.length
@@ -302,7 +429,6 @@ class DockLayout {
     if (activate) container.activateById(id);
   }
 
-  /// Activate a panel if it exists anywhere.
   bool activatePanel(String id) {
     bool activated = false;
     _visitContainers((c) {
@@ -317,12 +443,14 @@ class DockLayout {
 
   bool clear() {
     registry.clear();
+    autoHidden[AutoSide.left]!.clear();
+    autoHidden[AutoSide.right]!.clear();
+    autoHidden[AutoSide.bottom]!.clear();
     preferredSide.clear();
-    this.root = DockLayout.empty(registry).root;
+    root = DockLayout.empty(registry).root;
     return true;
   }
 
-  /// Remove a panel by id (optionally everywhere).
   bool removePanel(String id, {bool removeAll = true}) {
     bool removed = false;
     _visitContainers((c) {
@@ -337,7 +465,6 @@ class DockLayout {
     return removed;
   }
 
-  /// Returns true if there are no tabs anywhere.
   bool get isCompletelyEmpty {
     var empty = true;
     _visitContainers((c) {
@@ -365,14 +492,12 @@ class DockLayout {
     final center = _maybeGetSide(DockSide.center);
     if (center != null) return center;
 
-    // If root is already a container, use it and mark as center.
     if (root is ContainerNode) {
       final c = root as ContainerNode;
       c.side = DockSide.center;
       return c;
     }
 
-    // Otherwise, wrap the whole root in a vertical split and add a center container.
     final newCenter = ContainerNode(panelIds: const [], side: DockSide.center);
     root =
         SplitNode(axis: SplitAxis.vertical, ratio: 0.7, a: newCenter, b: root);
@@ -380,15 +505,12 @@ class DockLayout {
   }
 
   ContainerNode _ensureContainerForSide(DockSide side) {
-    // If a container already has that side, use it.
     final existing = _maybeGetSide(side);
     if (existing != null) return existing;
 
-    // If asking for center, just ensure center.
     if (side == DockSide.center) return _ensureCenterContainer();
 
-    // Otherwise, create structure by splitting against center.
-    final center = _ensureCenterContainer();
+    _ensureCenterContainer(); // make sure structure exists
     if (side == DockSide.left) {
       root = SplitNode(
         axis: SplitAxis.horizontal,
@@ -411,8 +533,7 @@ class DockLayout {
         b: ContainerNode(panelIds: const [], side: DockSide.bottom),
       );
     }
-    // Now it exists; fetch it.
-    return _maybeGetSide(side) ?? center;
+    return _maybeGetSide(side) ?? _ensureCenterContainer();
   }
 
   ContainerNode? _maybeGetSide(DockSide side) {
