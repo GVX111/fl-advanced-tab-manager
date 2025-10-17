@@ -102,9 +102,36 @@ class DockPersistence {
 
     // Load autoHidden (may be absent)
     final ah = (map['autoHidden'] as Map?) ?? const {};
-    _readAutoHiddenArray(layout, AutoSide.left, ah['left']);
-    _readAutoHiddenArray(layout, AutoSide.right, ah['right']);
-    _readAutoHiddenArray(layout, AutoSide.bottom, ah['bottom']);
+    _readAutoHiddenArray(
+      layout,
+      AutoSide.left,
+      ah['left'],
+      specFactory: specFactory,
+      missingPanelPolicy: missingPanelPolicy,
+      missingPanelBuilder: missingPanelBuilder,
+      missingPanelTitle: missingPanelTitle,
+      missingPanelSide: missingPanelSide,
+    );
+    _readAutoHiddenArray(
+      layout,
+      AutoSide.right,
+      ah['right'],
+      specFactory: specFactory,
+      missingPanelPolicy: missingPanelPolicy,
+      missingPanelBuilder: missingPanelBuilder,
+      missingPanelTitle: missingPanelTitle,
+      missingPanelSide: missingPanelSide,
+    );
+    _readAutoHiddenArray(
+      layout,
+      AutoSide.bottom,
+      ah['bottom'],
+      specFactory: specFactory,
+      missingPanelPolicy: missingPanelPolicy,
+      missingPanelBuilder: missingPanelBuilder,
+      missingPanelTitle: missingPanelTitle,
+      missingPanelSide: missingPanelSide,
+    );
 
     // After loading strips, make sure container tabs don’t include hidden ids.
     _pruneAutoHiddenPanels(layout);
@@ -117,23 +144,33 @@ class DockPersistence {
   static void _readAutoHiddenArray(
     DockLayout layout,
     AutoSide side,
-    Object? raw,
-  ) {
+    Object? raw, {
+    DockSpecFactory? specFactory,
+    MissingPanelPolicy missingPanelPolicy =
+        MissingPanelPolicy.registerPlaceholder,
+    Widget Function(BuildContext ctx, String missingId)? missingPanelBuilder,
+    String Function(String missingId)? missingPanelTitle,
+    DockSide Function(String missingId)? missingPanelSide,
+  }) {
     final list = (raw is List) ? raw.cast() : const [];
     final result = <String>[];
 
     for (final e in list) {
       if (e is! String) continue;
-      // Ensure the id is registered (try factory / placeholder / skip / throw).
+
       final ok = _ensureRegistered(
         e,
         layout.registry,
-        specFactory:
-            null, // layout already built with resolution; leave null here
-        // NOTE: if you want *autoHidden* also to attempt specFactory, pass it down
+        specFactory: specFactory, // ✅ Use factory!
+        missingPanelPolicy: missingPanelPolicy,
+        missingPanelBuilder: missingPanelBuilder,
+        missingPanelTitle: missingPanelTitle,
+        missingPanelSide: missingPanelSide,
       );
+
       if (ok) result.add(e);
     }
+
     layout.autoHidden[side] = result;
   }
 

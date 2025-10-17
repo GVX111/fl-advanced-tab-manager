@@ -143,7 +143,8 @@ class _DockAdsState extends State<DockAds> {
               _flyPanelId = id;
             });
           },
-
+          activeSide: _flySide,
+          activeId: _flyPanelId,
           // enable "move auto-hide"
           onBeginDrag: (side, id, globalDown) {
             _drag.isDragging = true;
