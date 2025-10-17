@@ -1,4 +1,3 @@
-// lib/ui/tabs.dart
 import 'package:fl_advanced_tab_manager/dockx_ads/core/container_node.dart';
 import 'package:fl_advanced_tab_manager/dockx_ads/core/dock_panel_registry.dart';
 import 'package:fl_advanced_tab_manager/dockx_ads/core/theme.dart';
@@ -18,6 +17,11 @@ class TabsContainer extends StatefulWidget {
   final void Function(Offset globalPos) onDragUpdate;
   final VoidCallback onDragEnd;
 
+  // NEW: maximize for this container & optional global "hide tab bar"
+  final VoidCallback? onToggleMaximize; // per-container expand/restore
+  final bool hideTabBar; // global zen/expand-all flag
+  final bool isMaximized;
+
   const TabsContainer({
     super.key,
     required this.node,
@@ -29,6 +33,10 @@ class TabsContainer extends StatefulWidget {
     required this.onDragStart,
     required this.onDragUpdate,
     required this.onDragEnd,
+    // NEW:
+    required this.isMaximized,
+    this.onToggleMaximize,
+    this.hideTabBar = false,
   });
 
   @override
@@ -53,52 +61,83 @@ class _TabsContainerState extends State<TabsContainer> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        // Tab strip
-        Container(
-          height: 32,
-          decoration: BoxDecoration(
-            color: widget.style.surface,
-            border: Border(bottom: BorderSide(color: widget.style.border)),
-          ),
-          child: Row(
-            children: [
-              Expanded(
-                child: ListView.builder(
-                  scrollDirection: Axis.horizontal,
-                  itemCount: ids.length,
-                  itemBuilder: (ctx, i) {
-                    final id = ids[i];
-                    final isActive = i == active;
-                    final title = widget.registry.getById(id).title;
-                    return _TabButton(
-                      title: title,
-                      isActive: isActive,
-                      style: widget.style,
-                      onTap: () {
-                        if (!mounted) return;
-                        setState(() => widget.node.activeIndex = i);
-                      },
-                      onClose: widget.onClose == null
-                          ? null
-                          : () {
-                              if (!mounted) return;
-                              widget.onClose!(i);
-                            },
-                      // NEW: pin from tab chip → auto-hide this tab
-                      onPinPressed: () => widget.onAutoHide(id),
+        // Tab strip (hidden if hideTabBar == true)
+        if (!widget.hideTabBar)
+          Container(
+            height: 32,
+            decoration: BoxDecoration(
+              color: widget.style.surface,
+              border: Border(bottom: BorderSide(color: widget.style.border)),
+            ),
+            child: GestureDetector(
+              // NEW: double-click on the tabbar background toggles maximize
+              onDoubleTap: widget.onToggleMaximize,
+              behavior: HitTestBehavior.opaque,
+              child: Row(
+                children: [
+                  Expanded(
+                    child: ListView.builder(
+                      scrollDirection: Axis.horizontal,
+                      itemCount: ids.length,
+                      itemBuilder: (ctx, i) {
+                        final id = ids[i];
+                        final isActive = i == active;
+                        final title = widget.registry.getById(id).title;
+                        return _TabButton(
+                          title: title,
+                          isActive: isActive,
+                          style: widget.style,
+                          onTap: () {
+                            if (!mounted) return;
+                            setState(() => widget.node.activeIndex = i);
+                          },
+                          onClose: widget.onClose == null
+                              ? null
+                              : () {
+                                  if (!mounted) return;
+                                  widget.onClose!(i);
+                                },
+                          // pin from tab chip → auto-hide this tab
+                          onPinPressed: () => widget.onAutoHide(id),
 
-                      // Float & drag
-                      onDoubleTap: (pos) => widget.onFloatRequest(id, pos),
-                      onDragStart: (p) => widget.onDragStart(id, p),
-                      onDragUpdate: widget.onDragUpdate,
-                      onDragEnd: widget.onDragEnd,
-                    );
-                  },
-                ),
+                          // Float & drag
+                          onDoubleTap: (pos) => widget.onFloatRequest(id, pos),
+                          onDragStart: (p) => widget.onDragStart(id, p),
+                          onDragUpdate: widget.onDragUpdate,
+                          onDragEnd: widget.onDragEnd,
+                        );
+                      },
+                    ),
+                  ),
+                  // NEW: small expand/restore button at the far right
+                  if (widget.onToggleMaximize != null)
+                    Padding(
+                      padding: const EdgeInsets.only(right: 4),
+                      child: IconButton(
+                        icon: Icon(
+                          widget.isMaximized
+                              ? widget.style.minimizeIcone
+                              : widget.style.maximizeIcon,
+                          size: 12,
+                        ),
+                        onPressed: widget.onToggleMaximize,
+                        style: ButtonStyle(
+                          padding:
+                              WidgetStateProperty.all(const EdgeInsets.all(4)),
+                          backgroundColor:
+                              WidgetStateProperty.resolveWith((states) {
+                            // subtle hover highlight
+                            if (states.isHovered) return widget.style.accent;
+                            return widget.style.surface;
+                          }),
+                          // optional: small border to match your theme
+                        ),
+                      ),
+                    ),
+                ],
               ),
-            ],
+            ),
           ),
-        ),
         // Active content
         Expanded(
           child: Container(
@@ -144,22 +183,21 @@ class _TabButton extends StatefulWidget {
   });
 
   @override
-  State<_TabButton> createState() => _TabButtonState();
+  State<_TabButton> createState() => _TabWidgetStateProperty();
 }
 
-class _TabButtonState extends State<_TabButton> {
+class _TabWidgetStateProperty extends State<_TabButton> {
   Offset? _downGlobal;
   bool _dragging = false;
   int _tapCount = 0;
   DateTime? _lastTapAt;
-  bool _hover = false; // <-- hover state for the chip
+  bool _hover = false; // hover state for the chip
 
-  // button styles with hover using theme colors from DockStyle
   ButtonStyle _iconBtnStyle() {
     return ButtonStyle(
-      padding: ButtonState.all(const EdgeInsets.all(4)),
-      backgroundColor: ButtonState.resolveWith((states) {
-        if (states.isHovering) return widget.style.surface2;
+      padding: WidgetStateProperty.all(const EdgeInsets.all(4)),
+      backgroundColor: WidgetStateProperty.resolveWith((states) {
+        if (states.isHovered) return widget.style.surface2;
         return widget.style.surface;
       }),
     );
@@ -172,9 +210,7 @@ class _TabButtonState extends State<_TabButton> {
     final bg = _hover ? widget.style.surface2 : baseBg; // hover bg
     final borderBottomColor =
         widget.isActive ? widget.style.background : widget.style.border;
-    final borderTopColor = _hover
-        ? (widget.style.accent)
-        : widget.style.border; // light accent on hover
+    final borderTopColor = _hover ? (widget.style.accent) : widget.style.border;
 
     return MouseRegion(
       cursor: SystemMouseCursors.click,
@@ -182,6 +218,19 @@ class _TabButtonState extends State<_TabButton> {
       onExit: (_) => setState(() => _hover = false),
       child: Listener(
         onPointerDown: (e) {
+          // NEW: middle-click closes this tab immediately on desktop
+          const int kMiddleMouseMask =
+              0x04; // Primary=0x01, Secondary=0x02, Middle=0x04
+          if (e.buttons & kMiddleMouseMask != 0) {
+            widget.onClose?.call();
+            // swallow further handling for this press
+            _downGlobal = null;
+            _dragging = false;
+            _tapCount = 0;
+            _lastTapAt = null;
+            return;
+          }
+
           _downGlobal = e.position;
           final now = DateTime.now();
           if (_lastTapAt != null &&
@@ -240,16 +289,16 @@ class _TabButtonState extends State<_TabButton> {
                   icon: Icon(widget.style.iconPin,
                       size: 12, color: widget.style.text),
                   onPressed: widget.onPinPressed,
-                  style: _iconBtnStyle(), // hover-aware
+                  style: _iconBtnStyle(),
                 ),
               ],
               if (widget.onClose != null) ...[
                 const SizedBox(width: 6),
                 IconButton(
-                  icon: Icon(FluentIcons.chrome_close,
+                  icon: Icon(widget.style.iconClose,
                       size: 10, color: widget.style.text),
                   onPressed: widget.onClose,
-                  style: _iconBtnStyle(), // hover-aware
+                  style: _iconBtnStyle(),
                 ),
               ],
             ],

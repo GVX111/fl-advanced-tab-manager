@@ -105,60 +105,64 @@ class DockStyle {
   final IconData iconPin;
   final IconData iconFloatTitle;
   final IconData iconResizeGrip;
+  final IconData maximizeIcon;
+  final IconData minimizeIcone;
   final double flyoutAnimationOffset;
 
-  const DockStyle({
-    // base
-    this.background = IDETheme.background,
-    this.surface = IDETheme.surface,
-    this.surface2 = IDETheme.surface2,
-    this.border = IDETheme.border,
-    this.text = IDETheme.text,
-    this.accent = IDETheme.accent,
+  const DockStyle(
+      {
+      // base
+      this.background = IDETheme.background,
+      this.surface = IDETheme.surface,
+      this.surface2 = IDETheme.surface2,
+      this.border = IDETheme.border,
+      this.text = IDETheme.text,
+      this.accent = IDETheme.accent,
 
-    // extras
-    this.shadow = IDETheme.shadow,
-    this.shadowOpacity = IDETheme.shadowOpacity,
-    this.overlayButtonBg = IDETheme.overlayButtonBg,
-    this.overlayButtonSelectedBg = IDETheme.overlayButtonSelectedBg,
-    this.overlayIcon = IDETheme.overlayIcon,
-    this.stripButtonHover = IDETheme.stripButtonHover,
-    this.splitterHighlight = IDETheme.splitterHighlight,
+      // extras
+      this.shadow = IDETheme.shadow,
+      this.shadowOpacity = IDETheme.shadowOpacity,
+      this.overlayButtonBg = IDETheme.overlayButtonBg,
+      this.overlayButtonSelectedBg = IDETheme.overlayButtonSelectedBg,
+      this.overlayIcon = IDETheme.overlayIcon,
+      this.stripButtonHover = IDETheme.stripButtonHover,
+      this.splitterHighlight = IDETheme.splitterHighlight,
 
-    // sizing
-    this.autoHideGap = IDETheme.autoHideGap,
-    this.stripThickness = IDETheme.stripThickness,
-    this.tabbarHeight = IDETheme.tabbarHeight,
-    this.floatTitleBarHeight = IDETheme.floatTitleBarHeight,
-    this.guideButtonSize = IDETheme.guideButtonSize,
-    this.guideButtonPadding = IDETheme.guideButtonPadding,
-    this.resizeGripSize = IDETheme.resizeGripSize,
-    this.cornerRadius = IDETheme.cornerRadius,
-    this.shadowBlur = IDETheme.shadowBlur,
-    this.shadowSpread = IDETheme.shadowSpread,
+      // sizing
+      this.autoHideGap = IDETheme.autoHideGap,
+      this.stripThickness = IDETheme.stripThickness,
+      this.tabbarHeight = IDETheme.tabbarHeight,
+      this.floatTitleBarHeight = IDETheme.floatTitleBarHeight,
+      this.guideButtonSize = IDETheme.guideButtonSize,
+      this.guideButtonPadding = IDETheme.guideButtonPadding,
+      this.resizeGripSize = IDETheme.resizeGripSize,
+      this.cornerRadius = IDETheme.cornerRadius,
+      this.shadowBlur = IDETheme.shadowBlur,
+      this.shadowSpread = IDETheme.shadowSpread,
 
-    // floating defaults & clamps
-    this.floatDefaultWidth = IDETheme.floatDefaultWidth,
-    this.floatDefaultHeight = IDETheme.floatDefaultHeight,
-    this.floatTitleGrabOffset = IDETheme.floatTitleGrabOffset,
-    this.floatScreenPad = IDETheme.floatScreenPad,
-    this.floatMinVisibleX = IDETheme.floatMinVisibleX,
-    this.floatMinVisibleY = IDETheme.floatMinVisibleY,
-    this.floatMinWidth = IDETheme.floatMinWidth,
-    this.floatMinHeight = IDETheme.floatMinHeight,
-    this.floatMaxWidth = IDETheme.floatMaxWidth,
-    this.floatMaxHeight = IDETheme.floatMaxHeight,
+      // floating defaults & clamps
+      this.floatDefaultWidth = IDETheme.floatDefaultWidth,
+      this.floatDefaultHeight = IDETheme.floatDefaultHeight,
+      this.floatTitleGrabOffset = IDETheme.floatTitleGrabOffset,
+      this.floatScreenPad = IDETheme.floatScreenPad,
+      this.floatMinVisibleX = IDETheme.floatMinVisibleX,
+      this.floatMinVisibleY = IDETheme.floatMinVisibleY,
+      this.floatMinWidth = IDETheme.floatMinWidth,
+      this.floatMinHeight = IDETheme.floatMinHeight,
+      this.floatMaxWidth = IDETheme.floatMaxWidth,
+      this.floatMaxHeight = IDETheme.floatMaxHeight,
 
-    // misc
-    this.stripButtonPadding =
-        const EdgeInsets.symmetric(horizontal: 15, vertical: 6),
-    this.iconClose = FluentIcons.chrome_close,
-    this.iconPin = FluentIcons.pin,
-    this.iconFloatTitle = FluentIcons.edit,
-    this.iconResizeGrip = WindowsIcons.resize_mouse_medium,
-    this.flyoutAnimationOffset = 28.0,
-    this.dragHoverBlurSigma = 6.0,
-    this.dragSourceBlurSigma = 2.0,
-    this.dragBlurMs = 120,
-  });
+      // misc
+      this.stripButtonPadding =
+          const EdgeInsets.symmetric(horizontal: 15, vertical: 6),
+      this.iconClose = FluentIcons.chrome_close,
+      this.iconPin = FluentIcons.pin,
+      this.iconFloatTitle = FluentIcons.edit,
+      this.iconResizeGrip = WindowsIcons.resize_mouse_medium,
+      this.flyoutAnimationOffset = 28.0,
+      this.dragHoverBlurSigma = 6.0,
+      this.dragSourceBlurSigma = 2.0,
+      this.dragBlurMs = 120,
+      this.maximizeIcon = WindowsIcons.chrome_maximize,
+      this.minimizeIcone = WindowsIcons.chrome_restore});
 }

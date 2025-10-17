@@ -47,12 +47,52 @@ class _DockAdsState extends State<DockAds> {
 
   AutoSide? _flySide;
   String? _flyPanelId;
+  ContainerNode? _maximized; // which container is maximized (null = normal)
   final GlobalKey _hostKey = GlobalKey();
 
   // floating windows
   final List<_FloatWin> _floats = <_FloatWin>[];
   int? _dragFloatIndex;
   Offset _dragFloatGrabOffset = Offset.zero;
+  void _toggleMaximize(ContainerNode node) {
+    setState(() {
+      _maximized = identical(_maximized, node) ? null : node;
+    });
+  }
+
+// Returns true if 'root' tree physically contains the 'target' ContainerNode instance
+  bool _containsNode(DockNode root, ContainerNode target) {
+    if (root is ContainerNode) return identical(root, target);
+    if (root is SplitNode) {
+      return _containsNode(root.a, target) || _containsNode(root.b, target);
+    }
+    return false;
+  }
+
+  void _validateMaximize() {
+    if (_maximized == null) return;
+    final goneFromTree = !_containsNode(widget.layout.root, _maximized!);
+    final isEmpty = _maximized!.panelIds.isEmpty;
+    if (goneFromTree || isEmpty) {
+      _maximized = null; // auto-unmaximize
+    }
+  }
+
+  // Build only the branch that contains 'target' (used when maximized)
+  Widget _buildPruned(DockNode root, ContainerNode target) {
+    if (root is ContainerNode) {
+      // This is exactly the target container → build it normally
+      if (identical(root, target)) return _buildNode(root);
+      // Not the target; shouldn't be reached by callers if they check _containsNode first
+      return const SizedBox.shrink();
+    }
+    if (root is SplitNode) {
+      // If target is in A, show only A; if in B, show only B
+      if (_containsNode(root.a, target)) return _buildPruned(root.a, target);
+      if (_containsNode(root.b, target)) return _buildPruned(root.b, target);
+    }
+    return const SizedBox.shrink();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -62,7 +102,33 @@ class _DockAdsState extends State<DockAds> {
         (widget.layout.autoHidden[AutoSide.right] ?? const []).isNotEmpty;
     final hasBottom =
         (widget.layout.autoHidden[AutoSide.bottom] ?? const []).isNotEmpty;
+// in _DockAdsState.build()
+    final bool isMax = (_maximized != null);
 
+// pick which dock tree to show (build only one tree)
+    final Widget dockTree = isMax
+        ? _buildPruned(widget.layout.root, _maximized!)
+        : _buildNode(widget.layout.root);
+
+// Animate opacity + size on that single tree (no duplicate keys)
+    Widget animatedDockTree = TweenAnimationBuilder<double>(
+      key: ValueKey('dock-anim-${isMax ? "max" : "full"}'),
+      tween: Tween<double>(begin: 0.0, end: 1.0),
+      duration: const Duration(milliseconds: 200),
+      curve: Curves.easeOutCubic,
+      builder: (context, t, child) {
+        return Opacity(
+          opacity: t,
+          child: child,
+        );
+      },
+      child: AnimatedSize(
+        duration: const Duration(milliseconds: 200),
+        curve: Curves.easeOutCubic,
+        alignment: Alignment.topCenter,
+        child: dockTree,
+      ),
+    );
     final content = Stack(
       key: _hostKey,
       fit: StackFit.expand,
@@ -132,7 +198,7 @@ class _DockAdsState extends State<DockAds> {
             right: hasRight ? widget.style.stripThickness : 0,
             bottom: hasBottom ? widget.style.stripThickness : 0,
           ),
-          child: _buildNode(widget.layout.root),
+          child: animatedDockTree,
         ),
 
         // Auto-hide flyout (with reliable onPin args: side, id)
@@ -378,46 +444,19 @@ class _DockAdsState extends State<DockAds> {
   }
 
   void _removePanelCompletely(String id) {
-    // remove from containers
     _removePanelEverywhere(widget.layout.root, id);
-
-    // remove from auto-hide strips
     for (final s in widget.layout.autoHidden.keys) {
       widget.layout.autoHidden[s]!.remove(id);
     }
-
-    // remove floating copy if present
     _floats.removeWhere((f) => f.panelId == id);
-
-    // close flyout if we’re showing that panel
     if (_flyPanelId == id) {
       _flyPanelId = null;
       _flySide = null;
     }
 
-    // collapse empties, repaint
     setState(() {
-      _simplifyTree();
+      _simplifyTree(); // will call _validateMaximize()
     });
-  }
-
-  /// First alive container’s rect (overlay coords), or null.
-  Rect? _firstAliveContainerRectInOverlay() {
-    for (final k in _containerByKey.keys) {
-      final r = _rectForInOverlay(k);
-      if (r != null) return r;
-    }
-    return null;
-  }
-
-  /// Overlay host rect (full area inside your dock host), or null.
-  Rect? _overlayHostRect() {
-    final overlayCtx = _hostKey.currentContext;
-    final overlayBox = overlayCtx?.findRenderObject() as RenderBox?;
-    if (overlayBox == null || !overlayBox.attached || !overlayBox.hasSize) {
-      return null;
-    }
-    return Offset.zero & overlayBox.size;
   }
 
   RenderBox? _overlayBox() =>
@@ -457,6 +496,8 @@ class _DockAdsState extends State<DockAds> {
             node: node,
             registry: widget.layout.registry,
             style: widget.style,
+            isMaximized: identical(_maximized, node),
+            onToggleMaximize: () => _toggleMaximize(node),
             onClose: (i) {
               if (!mounted) return;
               final id = node.panelIds[i];
@@ -761,6 +802,7 @@ class _DockAdsState extends State<DockAds> {
 
   void _simplifyTree() {
     widget.layout.root = _collapseEmpty(widget.layout.root);
+    _validateMaximize();
   }
 
   DockNode? _findParent(DockNode root, DockNode child) {
