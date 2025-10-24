@@ -3,6 +3,7 @@ import 'package:fl_advanced_tab_manager/dockx_ads/core/container_node.dart';
 import 'package:fl_advanced_tab_manager/dockx_ads/core/dock_node.dart';
 import 'package:fl_advanced_tab_manager/dockx_ads/core/dock_panel_registry.dart';
 import 'package:fl_advanced_tab_manager/dockx_ads/core/drag_model.dart';
+import 'package:fl_advanced_tab_manager/dockx_ads/core/enums/dock_insert_mode.dart';
 import 'package:fl_advanced_tab_manager/dockx_ads/core/enums/dock_node.dart';
 import 'package:fl_advanced_tab_manager/dockx_ads/core/enums/split_node.dart';
 import 'package:fl_advanced_tab_manager/dockx_ads/core/split_node.dart';
@@ -235,26 +236,239 @@ class DockLayout {
 
   // ---------- RUNTIME HELPERS (add/remove/activate) ----------
 
+  DockSide _sideFromZone(DropZone? z, DockSide fallback) {
+    switch (z) {
+      case DropZone.left:
+        return DockSide.left;
+      case DropZone.right:
+        return DockSide.right;
+      case DropZone.top:
+        return DockSide.bottom;
+      case DropZone.bottom:
+        return DockSide.bottom;
+      case DropZone.center:
+      case DropZone.tabbar:
+      case DropZone.none:
+      case null:
+        return fallback;
+    }
+  }
+
+  /// One API for all scenarios.
   void addPanel(
     String id, {
-    DockSide? side,
+    DropZone? zone, // where you want it relative to a group/edge
+    DockSide? side, // optional explicit side hint
     bool activate = true,
-    int? atIndex,
+    double? edgeFraction, // size for a new edge leaf (0..1); defaults per-side
   }) {
     if (!registry.has(id)) {
       throw ArgumentError('Panel "$id" is not registered.');
     }
 
-    side ??= registry.getById(id).position;
-    preferredSide[id] = side;
+    // clear from everywhere first
+    removePanel(id);
+    removeFromAutoHidden(id);
 
-    final container = _ensureContainerForSide(side);
-    final insertAt = atIndex == null
-        ? container.panelIds.length
-        : atIndex.clamp(0, container.panelIds.length);
+    final spec = registry.getById(id);
+    // preferred side: DropZone → side → panel's declared side
+    final desiredSide = _sideFromZone(zone, side ?? spec.position);
+    preferredSide[id] = desiredSide;
+    final groupId = spec.groupId;
+    // If a group was requested, prefer that container.
+    if (groupId != null) {
+      final target = findContainerByGroup(groupId);
 
-    container.panelIds.insert(insertAt, id);
-    if (activate) container.activateById(id);
+      if (target != null) {
+        // Group exists → split around it if a directional zone was given,
+        // otherwise just add as a tab.
+        final directional = zone == DropZone.left ||
+            zone == DropZone.right ||
+            zone == DropZone.top ||
+            zone == DropZone.bottom;
+        if (directional) {
+          final newC = ContainerNode(
+            panelIds: [id],
+            activeIndex: 0,
+            side: DockSide.center, // position comes from the split
+            groupId: groupId,
+          );
+          _splitAroundExisting(target, newC, zone!);
+          if (activate) newC.activateById(id);
+          return;
+        } else {
+          target.panelIds.add(id);
+          if (activate) target.activateById(id);
+          return;
+        }
+      }
+
+      // Group doesn't exist → create a brand-new leaf at the requested edge/side.
+      _insertAsNewEdgeLeaf(
+        id,
+        side: desiredSide,
+        groupId: groupId,
+        activate: activate,
+        fraction: edgeFraction,
+      );
+      return;
+    }
+
+    // No group id:
+    // If a directional zone was provided, treat it as "new leaf at that edge".
+    final directional = zone == DropZone.left ||
+        zone == DropZone.right ||
+        zone == DropZone.top ||
+        zone == DropZone.bottom;
+    if (directional && desiredSide != DockSide.center) {
+      _insertAsNewEdgeLeaf(
+        id,
+        side: desiredSide,
+        groupId: null,
+        activate: activate,
+        fraction: edgeFraction,
+      );
+      return;
+    }
+
+    // Otherwise append as a tab into the side container (ensures structure).
+    final c = _ensureContainerForSide(desiredSide);
+    c.panelIds.add(id);
+    if (activate) c.activateById(id);
+  }
+
+  // Split around an existing container using the same logic as your widget layer.
+  void _splitAroundExisting(
+      ContainerNode target, ContainerNode add, DropZone zone) {
+    DockNode _splitForZone(DropZone z, ContainerNode t, ContainerNode n) {
+      switch (z) {
+        case DropZone.left:
+          return SplitNode(axis: SplitAxis.horizontal, ratio: 0.5, a: n, b: t);
+        case DropZone.right:
+          return SplitNode(axis: SplitAxis.horizontal, ratio: 0.5, a: t, b: n);
+        case DropZone.top:
+          return SplitNode(axis: SplitAxis.vertical, ratio: 0.5, a: n, b: t);
+        case DropZone.bottom:
+          return SplitNode(axis: SplitAxis.vertical, ratio: 0.5, a: t, b: n);
+        case DropZone.center:
+        case DropZone.tabbar:
+        case DropZone.none:
+          return t;
+      }
+    }
+
+    final parent = _findParent(root, target);
+    final replacement = _splitForZone(zone, target, add);
+
+    if (identical(root, target)) {
+      root = replacement;
+    } else if (parent is SplitNode) {
+      if (identical(parent.a, target))
+        parent.a = replacement;
+      else if (identical(parent.b, target)) parent.b = replacement;
+    }
+  }
+
+// Create a brand-new leaf at an edge, keep edge width/height constant across multiple inserts.
+  void _insertAsNewEdgeLeaf(
+    String id, {
+    required DockSide side,
+    String? groupId,
+    required bool activate,
+    double? fraction,
+  }) {
+    final double fDefault = (side == DockSide.bottom) ? 0.32 : 0.22;
+    final double f = (fraction ?? fDefault).clamp(0.05, 0.90);
+
+    final leaf = ContainerNode(
+      panelIds: [id],
+      activeIndex: 0,
+      side: side,
+      groupId: groupId,
+    );
+    if (activate) leaf.activateById(id);
+
+    // Wrap the whole root once with a split that places the new leaf on the chosen edge.
+    if (side == DockSide.left) {
+      root = SplitNode(axis: SplitAxis.horizontal, ratio: f, a: leaf, b: root);
+    } else if (side == DockSide.right) {
+      root =
+          SplitNode(axis: SplitAxis.horizontal, ratio: 1 - f, a: root, b: leaf);
+    } else if (side == DockSide.bottom) {
+      root =
+          SplitNode(axis: SplitAxis.vertical, ratio: 1 - f, a: root, b: leaf);
+    } else {
+      // center fallback: just add as a tab to center
+      final c = _ensureContainerForSide(DockSide.center);
+      c.panelIds.add(id);
+      if (activate) c.activateById(id);
+      return;
+    }
+
+    // Normalize all edge leaves so each takes a constant fraction f (doesn't shrink every time).
+    _rebalanceEdge(side, f);
+  }
+
+// Keep all leaves on the same edge at the same global size fraction.
+  void _rebalanceEdge(DockSide side, double f) {
+    f = f.clamp(0.05, 0.90);
+
+    if (side == DockSide.left) {
+      SplitNode? cur = (root is SplitNode) ? root as SplitNode : null;
+      double remaining = 1.0;
+      while (cur != null &&
+          cur.axis == SplitAxis.horizontal &&
+          cur.a is ContainerNode &&
+          (cur.a as ContainerNode).side == DockSide.left) {
+        final r = (f / remaining).clamp(0.05, 0.95);
+        cur.ratio = r;
+        remaining *= (1.0 - r);
+        cur = (cur.b is SplitNode) ? cur.b as SplitNode : null;
+      }
+    } else if (side == DockSide.right) {
+      SplitNode? cur = (root is SplitNode) ? root as SplitNode : null;
+      double remaining = 1.0;
+      while (cur != null &&
+          cur.axis == SplitAxis.horizontal &&
+          cur.b is ContainerNode &&
+          (cur.b as ContainerNode).side == DockSide.right) {
+        final r = (1.0 - (f / remaining)).clamp(0.05, 0.95);
+        cur.ratio = r;
+        remaining *= r;
+        cur = (cur.a is SplitNode) ? cur.a as SplitNode : null;
+      }
+    } else if (side == DockSide.bottom) {
+      SplitNode? cur = (root is SplitNode) ? root as SplitNode : null;
+      double remaining = 1.0;
+      while (cur != null &&
+          cur.axis == SplitAxis.vertical &&
+          cur.b is ContainerNode &&
+          (cur.b as ContainerNode).side == DockSide.bottom) {
+        final r = (1.0 - (f / remaining)).clamp(0.05, 0.95);
+        cur.ratio = r;
+        remaining *= r;
+        cur = (cur.a is SplitNode) ? cur.a as SplitNode : null;
+      }
+    }
+  }
+
+// Parent lookup (you already had a version)
+  DockNode? _findParent(DockNode rootNode, DockNode child) {
+    DockNode? parent;
+    void walk(DockNode n) {
+      if (n is SplitNode) {
+        if (identical(n.a, child) || identical(n.b, child)) {
+          parent = n;
+          return;
+        }
+        walk(n.a);
+        if (parent != null) return;
+        walk(n.b);
+      }
+    }
+
+    walk(rootNode);
+    return parent;
   }
 
   bool activatePanel(String id) {
@@ -365,6 +579,25 @@ class DockLayout {
   }
 
   ContainerNode? _maybeGetSide(DockSide side) {
+    ContainerNode? hit;
+    _visitContainers((c) {
+      if (hit == null && c.side == side) hit = c;
+    });
+    return hit;
+  }
+}
+
+extension _Finders on DockLayout {
+  ContainerNode? findContainerByGroup(String groupId) {
+    ContainerNode? hit;
+    _visitContainers((c) {
+      if (hit == null && c.groupId == groupId) hit = c;
+    });
+    return hit;
+  }
+
+  /// Return the *first* side leaf container (if any) for the given DockSide.
+  ContainerNode? firstLeafOnSide(DockSide side) {
     ContainerNode? hit;
     _visitContainers((c) {
       if (hit == null && c.side == side) hit = c;

@@ -1,4 +1,3 @@
-import 'package:fl_advanced_tab_manager/dockx_ads/core/dock_panel_runtime.dart';
 import 'package:fl_advanced_tab_manager/dockx_ads/core/dock_panel_spec.dart';
 
 class DockPanelRegistry {
@@ -10,6 +9,7 @@ class DockPanelRegistry {
       title: s.title,
       builder: s.builder,
       position: s.position,
+      groupId: s.groupId,
     );
   }
 

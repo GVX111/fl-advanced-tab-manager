@@ -6,11 +6,13 @@ class ContainerNode extends DockNode {
   final List<String> panelIds;
   int activeIndex;
   DockSide side;
+  String? groupId;
 
   ContainerNode({
     required List<String> panelIds,
     this.activeIndex = 0,
     this.side = DockSide.center,
+    this.groupId, // NEW
   }) : panelIds = List<String>.from(panelIds) {
     clampActive();
   }
@@ -45,12 +47,14 @@ class ContainerNode extends DockNode {
         'panelIds': panelIds,
         'activeIndex': activeIndex,
         'side': side.name,
+        if (groupId != null) 'groupId': groupId,
       };
 
   static ContainerNode fromJson(Map<String, dynamic> j) => ContainerNode(
         panelIds: List<String>.from((j['panelIds'] as List).cast<String>()),
         activeIndex: (j['activeIndex'] as num?)?.toInt() ?? 0,
         side: _dockSideFromStr(j['side'] as String?),
+        groupId: j['groupId'] as String?, // NEW
       )..clampActive();
 
   static DockSide _dockSideFromStr(String? s) {

@@ -1,6 +1,8 @@
 import 'package:fl_advanced_tab_manager/dockx_ads/core/dock_layout.dart';
 import 'package:fl_advanced_tab_manager/dockx_ads/core/dock_panel_registry.dart';
 import 'package:fl_advanced_tab_manager/dockx_ads/core/dock_panel_spec.dart';
+import 'package:fl_advanced_tab_manager/dockx_ads/core/drag_model.dart';
+import 'package:fl_advanced_tab_manager/dockx_ads/core/enums/dock_insert_mode.dart';
 import 'package:fl_advanced_tab_manager/dockx_ads/core/enums/split_node.dart';
 import 'package:fl_advanced_tab_manager/dockx_ads/core/persistence.dart';
 import 'package:flutter/services.dart'; // Clipboard
@@ -153,7 +155,38 @@ class _HomeState extends State<_Home> {
         position: DockSide.left,
       ));
     }
-    layout.addPanel(id, side: DockSide.left, activate: true);
+    layout.addPanel(id, zone: DropZone.left, activate: true);
+
+    setState(() {});
+  }
+
+  void _addExplorerOnLeft() {
+    reg.register(DockPanelSpec(
+      id: 'explorer-22',
+      title: 'Explorer',
+      builder: (ctx) => const _Explorer(),
+      position: DockSide.left,
+    ));
+    layout.addPanel('explorer-22', activate: true, side: DockSide.left);
+
+    reg.register(DockPanelSpec(
+      id: "11",
+      groupId: "0",
+      title: 'Explorer 222',
+      builder: (ctx) => const _Explorer(),
+      position: DockSide.left,
+    ));
+    layout.addPanel('11', activate: true, side: DockSide.left);
+
+    reg.register(DockPanelSpec(
+      id: "112",
+      groupId: "0",
+      title: 'Explorer 220',
+      builder: (ctx) => const _Explorer(),
+      position: DockSide.left,
+    ));
+    layout.addPanel('112', activate: true, side: DockSide.left);
+
     setState(() {});
   }
 
@@ -212,6 +245,11 @@ class _HomeState extends State<_Home> {
               CommandBarButton(
                 icon: const Icon(FluentIcons.open_enrollment),
                 label: const Text('Explorer (Left)'),
+                onPressed: _addExplorerOnLeft,
+              ),
+              CommandBarButton(
+                icon: const Icon(FluentIcons.open_enrollment),
+                label: const Text('Explorer Tab(Left)'),
                 onPressed: _addExplorer,
               ),
               CommandBarButton(

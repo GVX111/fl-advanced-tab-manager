@@ -161,28 +161,28 @@ class _DockAdsState extends State<DockAds> {
             if (id != null) {
               if (_drag.hoverZone != DropZone.none) {
                 if (_drag.targetKey != null) {
+                  // Dropped over an actual container → UNHIDE (dock into that container)
                   final target = _containerByKey[_drag.targetKey!];
                   if (target != null) {
                     setState(() {
-                      _removeFromAllStrips(id);
+                      widget.layout.removeFromAutoHidden(id);
                       _dockInto(target, _drag.hoverZone, id);
                       _simplifyTree();
                     });
                   }
                 } else {
-                  // app-edge docking
-                  final side = _zoneToSide(_drag.hoverZone);
-                  if (side != null) {
+                  // Dropped on an APP EDGE while dragging a STRIP BUTTON → MOVE BETWEEN STRIPS
+                  final autoSide = _zoneToAutoSide(_drag.hoverZone);
+                  if (autoSide != null) {
                     setState(() {
-                      _removeFromAllStrips(id);
-                      _dockToEdge(id, side);
-                      _simplifyTree();
+                      widget.layout.moveAutoHidden(id, autoSide);
                     });
                   }
                 }
               } else if (_drag.lastGlobalPos != null) {
+                // No target, no edge → optional: float it
                 setState(() {
-                  _removeFromAllStrips(id);
+                  widget.layout.removeFromAutoHidden(id);
                   floatPanel(id, originGlobal: _drag.lastGlobalPos);
                 });
               }
@@ -397,6 +397,22 @@ class _DockAdsState extends State<DockAds> {
     if (ctx is! Element || !ctx.mounted) return false;
     final ro = ctx.renderObject;
     return ro is RenderBox && ro.hasSize && ro.attached;
+  }
+
+  AutoSide? _zoneToAutoSide(DropZone z) {
+    switch (z) {
+      case DropZone.left:
+        return AutoSide.left;
+      case DropZone.right:
+        return AutoSide.right;
+      case DropZone.bottom:
+        return AutoSide.bottom;
+      case DropZone.top:
+        return AutoSide
+            .bottom; // no top strip; treat as bottom (or return null to ignore)
+      default:
+        return null;
+    }
   }
 
   /// Rect of a child key **in overlay host coords**, null if inactive.
@@ -1186,7 +1202,7 @@ class _DockGuidesOverlay extends StatelessWidget {
     ];
 
     if (!edgesOnly) {
-      children.add(btn(DropZone.center, WindowsIcons.dock, centerC));
+      children.add(btn(DropZone.left, WindowsIcons.dock, centerC));
     }
 
     return IgnorePointer(child: Stack(children: children));
