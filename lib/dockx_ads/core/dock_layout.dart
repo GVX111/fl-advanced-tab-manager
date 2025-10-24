@@ -358,10 +358,45 @@ class DockLayout {
     c.panelIds.add(id);
     if (activate) c.activateById(id);
   }
+// --- pruning/cleanup ---------------------------------------------------------
 
-  // Split around an existing container using the same logic as your widget layer.
+  DockNode _collapseEmpty(DockNode n) {
+    if (n is ContainerNode)
+      return n; // keep as-is; empties are okay here, but we prune via parent
+    if (n is SplitNode) {
+      n.a = _collapseEmpty(n.a);
+      n.b = _collapseEmpty(n.b);
+
+      // If either side is an empty ContainerNode, drop it
+      bool _isEmptyContainer(DockNode x) =>
+          x is ContainerNode && x.panelIds.isEmpty;
+
+      if (_isEmptyContainer(n.a) && !_isEmptyContainer(n.b)) return n.b;
+      if (_isEmptyContainer(n.b) && !_isEmptyContainer(n.a)) return n.a;
+
+      // If both sides are splits/containers but one is degenerate, just keep as-is
+      return n;
+    }
+    return n;
+  }
+
+  void _simplifyAfterMutation() {
+    root = _collapseEmpty(root);
+  }
+
   void _splitAroundExisting(
       ContainerNode target, ContainerNode add, DropZone zone) {
+    // If target is empty, just reuse it instead of splitting (prevents gaps)
+    if (target.panelIds.isEmpty) {
+      target.groupId = add.groupId;
+      target.side = DockSide.center;
+      target.panelIds.clear();
+      target.panelIds.addAll(add.panelIds);
+      target.activeIndex = target.panelIds.length - 1;
+      _simplifyAfterMutation();
+      return;
+    }
+
     DockNode _splitForZone(DropZone z, ContainerNode t, ContainerNode n) {
       switch (z) {
         case DropZone.left:
@@ -389,6 +424,7 @@ class DockLayout {
         parent.a = replacement;
       else if (identical(parent.b, target)) parent.b = replacement;
     }
+    _simplifyAfterMutation(); // <- important
   }
 
 // Create a brand-new leaf at an edge, keep edge width/height constant across multiple inserts.
