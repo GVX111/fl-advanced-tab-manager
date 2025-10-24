@@ -165,27 +165,27 @@ class _HomeState extends State<_Home> {
       id: 'explorer-22',
       title: 'Explorer',
       builder: (ctx) => const _Explorer(),
-      position: DockSide.left,
+      position: DockSide.center,
     ));
-    layout.addPanel('explorer-22', activate: true, side: DockSide.left);
+    layout.addPanel('explorer-22', activate: true, side: DockSide.center);
 
     reg.register(DockPanelSpec(
       id: "11",
       groupId: "0",
       title: 'Explorer 222',
       builder: (ctx) => const _Explorer(),
-      position: DockSide.left,
+      position: DockSide.center,
     ));
-    layout.addPanel('11', activate: true, side: DockSide.left);
+    layout.addPanel('11', activate: true, side: DockSide.center);
 
     reg.register(DockPanelSpec(
       id: "112",
       groupId: "0",
       title: 'Explorer 220',
       builder: (ctx) => const _Explorer(),
-      position: DockSide.left,
+      position: DockSide.center,
     ));
-    layout.addPanel('112', activate: true, side: DockSide.left);
+    layout.addPanel('112', activate: true, side: DockSide.center);
 
     setState(() {});
   }

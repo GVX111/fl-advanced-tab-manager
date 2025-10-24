@@ -257,53 +257,92 @@ class DockLayout {
   /// One API for all scenarios.
   void addPanel(
     String id, {
-    DropZone? zone, // where you want it relative to a group/edge
-    DockSide? side, // optional explicit side hint
+    DropZone? zone,
+    DockSide? side,
     bool activate = true,
-    double? edgeFraction, // size for a new edge leaf (0..1); defaults per-side
+    double? edgeFraction,
   }) {
     if (!registry.has(id)) {
       throw ArgumentError('Panel "$id" is not registered.');
     }
 
-    // clear from everywhere first
+    // clean up previous locations
     removePanel(id);
     removeFromAutoHidden(id);
 
     final spec = registry.getById(id);
-    // preferred side: DropZone → side → panel's declared side
     final desiredSide = _sideFromZone(zone, side ?? spec.position);
     preferredSide[id] = desiredSide;
-    final groupId = spec.groupId;
-    // If a group was requested, prefer that container.
-    if (groupId != null) {
-      final target = findContainerByGroup(groupId);
+    final String? groupId = spec.groupId;
 
-      if (target != null) {
-        // Group exists → split around it if a directional zone was given,
-        // otherwise just add as a tab.
-        final directional = zone == DropZone.left ||
-            zone == DropZone.right ||
-            zone == DropZone.top ||
-            zone == DropZone.bottom;
-        if (directional) {
-          final newC = ContainerNode(
-            panelIds: [id],
-            activeIndex: 0,
-            side: DockSide.center, // position comes from the split
-            groupId: groupId,
-          );
-          _splitAroundExisting(target, newC, zone!);
-          if (activate) newC.activateById(id);
-          return;
-        } else {
-          target.panelIds.add(id);
-          if (activate) target.activateById(id);
-          return;
-        }
+    // ---------- CENTER + groupId ----------
+    if (desiredSide == DockSide.center && groupId != null) {
+      // if container with same group exists -> tab into it
+      final existingGroup = findContainerByGroup(groupId);
+      if (existingGroup != null) {
+        existingGroup.panelIds.add(id);
+        if (activate) existingGroup.activateById(id);
+        return;
       }
 
-      // Group doesn't exist → create a brand-new leaf at the requested edge/side.
+      // no group container; try to reuse an EMPTY center container
+      final targetCenter = _ensureContainerForSide(DockSide.center);
+      final bool canReuseCenter =
+          targetCenter.panelIds.isEmpty && (targetCenter.groupId == null);
+
+      if (canReuseCenter) {
+        // reuse the empty center container and stamp its groupId
+        targetCenter.groupId = groupId;
+        targetCenter.panelIds.add(id);
+        if (activate) targetCenter.activateById(id);
+        return;
+      }
+
+      // center already has content -> split around it
+      final newC = ContainerNode(
+        panelIds: [id],
+        activeIndex: 0,
+        side: DockSide.center,
+        groupId: groupId,
+      );
+      final z = zone ?? DropZone.right;
+      _splitAroundExisting(targetCenter, newC, z);
+      if (activate) newC.activateById(id);
+      return;
+    }
+
+    // ---------- CENTER + NO groupId (own container) ----------
+    if (desiredSide == DockSide.center && groupId == null) {
+      final targetCenter = _ensureContainerForSide(DockSide.center);
+
+      if (targetCenter.panelIds.isEmpty) {
+        // reuse the empty center container instead of splitting (prevents blank space)
+        targetCenter.groupId = null; // explicit
+        targetCenter.panelIds.add(id);
+        if (activate) targetCenter.activateById(id);
+        return;
+      }
+
+      // center already has content -> create a sibling container by splitting
+      final newC = ContainerNode(
+        panelIds: [id],
+        activeIndex: 0,
+        side: DockSide.center,
+        groupId: null,
+      );
+      final z = zone ?? DropZone.right;
+      _splitAroundExisting(targetCenter, newC, z);
+      if (activate) newC.activateById(id);
+      return;
+    }
+
+    // ---------- EDGES (unchanged) ----------
+    final directional = zone == DropZone.left ||
+        zone == DropZone.right ||
+        zone == DropZone.top ||
+        zone == DropZone.bottom;
+
+    if (directional && desiredSide != DockSide.center) {
       _insertAsNewEdgeLeaf(
         id,
         side: desiredSide,
@@ -314,24 +353,7 @@ class DockLayout {
       return;
     }
 
-    // No group id:
-    // If a directional zone was provided, treat it as "new leaf at that edge".
-    final directional = zone == DropZone.left ||
-        zone == DropZone.right ||
-        zone == DropZone.top ||
-        zone == DropZone.bottom;
-    if (directional && desiredSide != DockSide.center) {
-      _insertAsNewEdgeLeaf(
-        id,
-        side: desiredSide,
-        groupId: null,
-        activate: activate,
-        fraction: edgeFraction,
-      );
-      return;
-    }
-
-    // Otherwise append as a tab into the side container (ensures structure).
+    // default: append as tab into that side container
     final c = _ensureContainerForSide(desiredSide);
     c.panelIds.add(id);
     if (activate) c.activateById(id);
