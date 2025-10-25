@@ -51,8 +51,8 @@ class _SplitViewState extends State<SplitView> {
     widget.node.ratio = widget.node.ratio.clamp(0.0, 1.0);
 
     // Get highlight color from theme; fallbacks keep things safe.
-    final Color hlColor =
-        (widget.style.splitterHighlight).withOpacity(_dragging ? 0.60 : 1);
+    final Color hlColor = (widget.style.splitterHighlight)
+        .withValues(alpha: _dragging ? 0.60 : 1);
 
     return LayoutBuilder(
       builder: (context, c) {

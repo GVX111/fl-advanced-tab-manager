@@ -1,5 +1,4 @@
 import 'package:fluent_ui/fluent_ui.dart';
-import 'package:flutter/rendering.dart';
 import '../core/theme.dart';
 
 typedef FloatDragStart = void Function(Offset globalDown, Offset grabOffset);
@@ -65,8 +64,8 @@ class _FloatTitleBarState extends State<FloatTitleBar> {
               icon: const Icon(FluentIcons.chrome_close, size: 10),
               onPressed: widget.onClose,
               style: ButtonStyle(
-                backgroundColor: ButtonState.all(widget.style.surface),
-                padding: ButtonState.all(const EdgeInsets.all(6)),
+                backgroundColor: WidgetStateProperty.all(widget.style.surface),
+                padding: WidgetStateProperty.all(const EdgeInsets.all(6)),
               ),
             ),
           ],
@@ -136,8 +135,8 @@ class _TitleBarState extends State<_TitleBar> {
               icon: const Icon(FluentIcons.chrome_close, size: 10),
               onPressed: widget.onClose,
               style: ButtonStyle(
-                backgroundColor: ButtonState.all(widget.style.surface),
-                padding: ButtonState.all(const EdgeInsets.all(6)),
+                backgroundColor: WidgetStateProperty.all(widget.style.surface),
+                padding: WidgetStateProperty.all(const EdgeInsets.all(6)),
               ),
             ),
           ],

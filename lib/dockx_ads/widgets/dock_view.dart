@@ -23,6 +23,7 @@ class _FloatWin {
   _FloatWin({required this.panelId, required this.pos, required this.size});
 }
 
+// ignore: must_be_immutable
 class DockAds extends StatefulWidget {
   DockLayout layout;
   final DockStyle style;
@@ -715,12 +716,6 @@ class _DockAdsState extends State<DockAds> {
     });
   }
 
-  void _removeFromAllStrips(String id) {
-    for (final side in widget.layout.autoHidden.keys) {
-      widget.layout.autoHidden[side]!.remove(id);
-    }
-  }
-
   DockSide? _zoneToSide(DropZone z) {
     switch (z) {
       case DropZone.left:
@@ -1106,13 +1101,11 @@ class _DockGuidesOverlay extends StatelessWidget {
   final Rect? targetRect;
   final DropZone hoverZone;
   final DockStyle style;
-  final bool edgesOnly;
 
   const _DockGuidesOverlay({
     required this.targetRect,
     required this.hoverZone,
     required this.style,
-    this.edgesOnly = false,
   });
 
   @override
@@ -1201,9 +1194,7 @@ class _DockGuidesOverlay extends StatelessWidget {
       btn(DropZone.bottom, WindowsIcons.dock_bottom, bottomC),
     ];
 
-    if (!edgesOnly) {
-      children.add(btn(DropZone.left, WindowsIcons.dock, centerC));
-    }
+    children.add(btn(DropZone.left, WindowsIcons.dock, centerC));
 
     return IgnorePointer(child: Stack(children: children));
   }

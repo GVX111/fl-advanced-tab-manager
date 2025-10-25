@@ -3,7 +3,6 @@ import 'package:fl_advanced_tab_manager/dockx_ads/core/container_node.dart';
 import 'package:fl_advanced_tab_manager/dockx_ads/core/dock_node.dart';
 import 'package:fl_advanced_tab_manager/dockx_ads/core/dock_panel_registry.dart';
 import 'package:fl_advanced_tab_manager/dockx_ads/core/drag_model.dart';
-import 'package:fl_advanced_tab_manager/dockx_ads/core/enums/dock_insert_mode.dart';
 import 'package:fl_advanced_tab_manager/dockx_ads/core/enums/dock_node.dart';
 import 'package:fl_advanced_tab_manager/dockx_ads/core/enums/split_node.dart';
 import 'package:fl_advanced_tab_manager/dockx_ads/core/split_node.dart';
@@ -650,15 +649,6 @@ extension _Finders on DockLayout {
     ContainerNode? hit;
     _visitContainers((c) {
       if (hit == null && c.groupId == groupId) hit = c;
-    });
-    return hit;
-  }
-
-  /// Return the *first* side leaf container (if any) for the given DockSide.
-  ContainerNode? firstLeafOnSide(DockSide side) {
-    ContainerNode? hit;
-    _visitContainers((c) {
-      if (hit == null && c.side == side) hit = c;
     });
     return hit;
   }

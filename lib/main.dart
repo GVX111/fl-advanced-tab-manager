@@ -2,7 +2,6 @@ import 'package:fl_advanced_tab_manager/dockx_ads/core/dock_layout.dart';
 import 'package:fl_advanced_tab_manager/dockx_ads/core/dock_panel_registry.dart';
 import 'package:fl_advanced_tab_manager/dockx_ads/core/dock_panel_spec.dart';
 import 'package:fl_advanced_tab_manager/dockx_ads/core/drag_model.dart';
-import 'package:fl_advanced_tab_manager/dockx_ads/core/enums/dock_insert_mode.dart';
 import 'package:fl_advanced_tab_manager/dockx_ads/core/enums/split_node.dart';
 import 'package:fl_advanced_tab_manager/dockx_ads/core/persistence.dart';
 import 'package:flutter/services.dart'; // Clipboard
