@@ -172,14 +172,15 @@ class DockStyle {
     final overlayButtonBg =
         isDark ? const Color(0xC0222222) : const Color(0xCCFFFFFF);
 
-    final overlayButtonSelectedBg = accent.withOpacity(isDark ? 0.95 : 0.90);
+    final overlayButtonSelectedBg =
+        accent.withValues(alpha: isDark ? 0.95 : 0.90);
     final overlayIcon = isDark ? Colors.white : Colors.black;
 
     // Hover colors: subtle highlight based on accent.
-    final stripButtonHover = accent.withOpacity(isDark ? 0.18 : 0.12);
+    final stripButtonHover = accent.withValues(alpha: isDark ? 0.18 : 0.12);
 
     // Splitter highlight: bluish highlight derived from accent.
-    final splitterHighlight = accent.withOpacity(isDark ? 0.35 : 0.25);
+    final splitterHighlight = accent.withValues(alpha: isDark ? 0.35 : 0.25);
 
     final shadow = Colors.black;
     final shadowOpacity = isDark ? IDETheme.shadowOpacity : 0.18;
