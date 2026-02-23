@@ -10,10 +10,10 @@ import 'package:fl_advanced_tab_manager/dockx_ads/widgets/animate_blur.dart';
 import 'package:fl_advanced_tab_manager/dockx_ads/widgets/floating_panel.dart';
 import 'package:fluent_ui/fluent_ui.dart';
 
+import 'auto_hide.dart';
+import 'drag_overlay.dart';
 import 'split_view.dart';
 import 'tabs.dart';
-import 'drag_overlay.dart';
-import 'auto_hide.dart';
 
 /// ---- Floating panels host ----
 class _FloatWin {
@@ -26,8 +26,11 @@ class _FloatWin {
 // ignore: must_be_immutable
 class DockAds extends StatefulWidget {
   DockLayout layout;
-  final DockStyle style;
-  DockAds({super.key, required this.layout, this.style = const DockStyle()});
+
+  /// Optional: override theme-resolved style (else uses DockStyle.fromTheme(context))
+  final DockStyle? styleOverride;
+
+  DockAds({super.key, required this.layout, this.styleOverride});
 
   @override
   State<DockAds> createState() => _DockAdsState();
@@ -55,13 +58,14 @@ class _DockAdsState extends State<DockAds> {
   final List<_FloatWin> _floats = <_FloatWin>[];
   int? _dragFloatIndex;
   Offset _dragFloatGrabOffset = Offset.zero;
+
   void _toggleMaximize(ContainerNode node) {
     setState(() {
       _maximized = identical(_maximized, node) ? null : node;
     });
   }
 
-// Returns true if 'root' tree physically contains the 'target' ContainerNode instance
+  // Returns true if 'root' tree physically contains the 'target' ContainerNode instance
   bool _containsNode(DockNode root, ContainerNode target) {
     if (root is ContainerNode) return identical(root, target);
     if (root is SplitNode) {
@@ -80,49 +84,45 @@ class _DockAdsState extends State<DockAds> {
   }
 
   // Build only the branch that contains 'target' (used when maximized)
-  Widget _buildPruned(DockNode root, ContainerNode target) {
+  Widget _buildPruned(DockNode root, ContainerNode target, DockStyle style) {
     if (root is ContainerNode) {
-      // This is exactly the target container → build it normally
-      if (identical(root, target)) return _buildNode(root);
-      // Not the target; shouldn't be reached by callers if they check _containsNode first
+      if (identical(root, target)) return _buildNode(root, style);
       return const SizedBox.shrink();
     }
     if (root is SplitNode) {
-      // If target is in A, show only A; if in B, show only B
-      if (_containsNode(root.a, target)) return _buildPruned(root.a, target);
-      if (_containsNode(root.b, target)) return _buildPruned(root.b, target);
+      if (_containsNode(root.a, target))
+        return _buildPruned(root.a, target, style);
+      if (_containsNode(root.b, target))
+        return _buildPruned(root.b, target, style);
     }
     return const SizedBox.shrink();
   }
 
   @override
   Widget build(BuildContext context) {
+    final style = widget.styleOverride ?? DockStyle.fromTheme(context);
+
     final hasLeft =
         (widget.layout.autoHidden[AutoSide.left] ?? const []).isNotEmpty;
     final hasRight =
         (widget.layout.autoHidden[AutoSide.right] ?? const []).isNotEmpty;
     final hasBottom =
         (widget.layout.autoHidden[AutoSide.bottom] ?? const []).isNotEmpty;
-// in _DockAdsState.build()
+
     final bool isMax = (_maximized != null);
 
-// pick which dock tree to show (build only one tree)
+    // pick which dock tree to show (build only one tree)
     final Widget dockTree = isMax
-        ? _buildPruned(widget.layout.root, _maximized!)
-        : _buildNode(widget.layout.root);
+        ? _buildPruned(widget.layout.root, _maximized!, style)
+        : _buildNode(widget.layout.root, style);
 
-// Animate opacity + size on that single tree (no duplicate keys)
+    // Animate opacity + size on that single tree (no duplicate keys)
     Widget animatedDockTree = TweenAnimationBuilder<double>(
       key: ValueKey('dock-anim-${isMax ? "max" : "full"}'),
       tween: Tween<double>(begin: 0.0, end: 1.0),
       duration: const Duration(milliseconds: 200),
       curve: Curves.easeOutCubic,
-      builder: (context, t, child) {
-        return Opacity(
-          opacity: t,
-          child: child,
-        );
-      },
+      builder: (context, t, child) => Opacity(opacity: t, child: child),
       child: AnimatedSize(
         duration: const Duration(milliseconds: 200),
         curve: Curves.easeOutCubic,
@@ -130,6 +130,7 @@ class _DockAdsState extends State<DockAds> {
         child: dockTree,
       ),
     );
+
     final content = Stack(
       key: _hostKey,
       fit: StackFit.expand,
@@ -191,14 +192,14 @@ class _DockAdsState extends State<DockAds> {
             _resetDrag();
           },
 
-          style: widget.style,
+          style: style,
         ),
 
         Padding(
           padding: EdgeInsets.only(
-            left: hasLeft ? widget.style.stripThickness : 0,
-            right: hasRight ? widget.style.stripThickness : 0,
-            bottom: hasBottom ? widget.style.stripThickness : 0,
+            left: hasLeft ? style.stripThickness : 0,
+            right: hasRight ? style.stripThickness : 0,
+            bottom: hasBottom ? style.stripThickness : 0,
           ),
           child: animatedDockTree,
         ),
@@ -206,12 +207,12 @@ class _DockAdsState extends State<DockAds> {
         // Auto-hide flyout (with reliable onPin args: side, id)
         if (_flySide != null && _flyPanelId != null)
           Positioned.fill(
-            bottom: hasBottom ? widget.style.stripThickness : 0,
+            bottom: hasBottom ? style.stripThickness : 0,
             child: AutoHideFlyout(
               side: _flySide!,
               panelId: _flyPanelId!,
               title: widget.layout.registry.getById(_flyPanelId!).title,
-              content: _buildPanelContent(_flyPanelId!),
+              content: Container(child: _buildPanelContent(_flyPanelId!)),
 
               // PIN: unhide to its declared side
               onPin: (side, id) {
@@ -291,19 +292,18 @@ class _DockAdsState extends State<DockAds> {
                 _resetDrag();
               },
 
-              style: widget.style,
+              style: style,
             ),
           ),
 
         // Dock guides (cross + edges)
-        if (_drag.isDragging) ...[
+        if (_drag.isDragging)
           _DockGuidesOverlay(
-            targetRect: _currentTargetRect(),
+            targetRect: _currentTargetRect(style),
             hoverZone:
                 (_drag.targetKey != null) ? _drag.hoverZone : DropZone.none,
-            style: widget.style,
+            style: style,
           ),
-        ],
 
         // Floating windows on top
         ...List.generate(_floats.length, (i) {
@@ -315,7 +315,7 @@ class _DockAdsState extends State<DockAds> {
             content: _buildPanelContent(f.panelId),
             pos: f.pos,
             size: f.size,
-            style: widget.style,
+            style: style,
             onDragStart: (globalDown, grabOffset) {
               setState(() {
                 _dragFloatIndex = i;
@@ -380,14 +380,14 @@ class _DockAdsState extends State<DockAds> {
         }),
 
         // target highlight (DragOverlay tolerates null)
-        DragOverlay(drag: _drag, targetRect: _currentTargetRect()),
+        DragOverlay(drag: _drag, targetRect: _currentTargetRect(style)),
       ],
     );
 
     return Column(
       children: [
         Expanded(
-          child: Container(color: widget.style.background, child: content),
+          child: Container(color: style.background, child: content),
         ),
       ],
     );
@@ -409,72 +409,10 @@ class _DockAdsState extends State<DockAds> {
       case DropZone.bottom:
         return AutoSide.bottom;
       case DropZone.top:
-        return AutoSide
-            .bottom; // no top strip; treat as bottom (or return null to ignore)
+        return AutoSide.bottom; // no top strip; treat as bottom
       default:
         return null;
     }
-  }
-
-  /// Rect of a child key **in overlay host coords**, null if inactive.
-  Rect? _rectForInOverlay(GlobalKey childKey) {
-    if (!_isKeyActive(childKey)) return null;
-
-    final overlayCtx = _hostKey.currentContext;
-    final overlayBox = overlayCtx?.findRenderObject() as RenderBox?;
-    if (overlayBox == null || !overlayBox.hasSize || !overlayBox.attached) {
-      return null;
-    }
-
-    final childBox = childKey.currentContext!.findRenderObject() as RenderBox;
-    final topLeftGlobal = childBox.localToGlobal(Offset.zero);
-    final topLeftLocal = overlayBox.globalToLocal(topLeftGlobal);
-    return Rect.fromLTWH(
-      topLeftLocal.dx,
-      topLeftLocal.dy,
-      childBox.size.width,
-      childBox.size.height,
-    );
-  }
-
-  Rect? _dockHostRect() {
-    final rb = _hostKey.currentContext?.findRenderObject() as RenderBox?;
-    if (rb == null || !rb.attached || !rb.hasSize) return null;
-
-    final hasLeft =
-        (widget.layout.autoHidden[AutoSide.left] ?? const []).isNotEmpty;
-    final hasRight =
-        (widget.layout.autoHidden[AutoSide.right] ?? const []).isNotEmpty;
-    final hasBottom =
-        (widget.layout.autoHidden[AutoSide.bottom] ?? const []).isNotEmpty;
-
-    final padL = hasLeft ? widget.style.stripThickness : 0.0;
-    final padR = hasRight ? widget.style.stripThickness : 0.0;
-    final padB = hasBottom ? widget.style.stripThickness : 0.0;
-
-    final size = rb.size;
-    return Rect.fromLTWH(
-      padL,
-      0,
-      size.width - padL - padR,
-      size.height - padB,
-    );
-  }
-
-  void _removePanelCompletely(String id) {
-    _removePanelEverywhere(widget.layout.root, id);
-    for (final s in widget.layout.autoHidden.keys) {
-      widget.layout.autoHidden[s]!.remove(id);
-    }
-    _floats.removeWhere((f) => f.panelId == id);
-    if (_flyPanelId == id) {
-      _flyPanelId = null;
-      _flySide = null;
-    }
-
-    setState(() {
-      _simplifyTree(); // will call _validateMaximize()
-    });
   }
 
   RenderBox? _overlayBox() =>
@@ -485,35 +423,34 @@ class _DockAdsState extends State<DockAds> {
     return Builder(builder: (ctx) => panel.builder(ctx));
   }
 
-  Widget _buildNode(DockNode node) {
+  Widget _buildNode(DockNode node, DockStyle style) {
     if (node is SplitNode) {
       return SplitView(
         node: node,
-        aBuilder: _buildNode(node.a),
-        bBuilder: _buildNode(node.b),
-        style: widget.style,
+        aBuilder: _buildNode(node.a, style),
+        bBuilder: _buildNode(node.b, style),
+        style: style,
       );
     } else if (node is ContainerNode) {
       final key = _keyFor(node); // STABLE KEY
       _containerByKey[key] = node;
 
-      // Blur decision for THIS container
       final bool isTarget = _drag.isDragging && identical(_drag.targetKey, key);
       final bool isSource = _drag.isDragging && identical(_dragSourceKey, key);
       final double sigma = isTarget
-          ? widget.style.dragHoverBlurSigma
-          : (isSource ? widget.style.dragSourceBlurSigma : 0.0);
+          ? style.dragHoverBlurSigma
+          : (isSource ? style.dragSourceBlurSigma : 0.0);
 
       return AnimatedBlur(
         sigma: sigma,
-        durationMs: widget.style.dragBlurMs,
+        durationMs: style.dragBlurMs,
         child: _ContainerFrame(
           key: key,
-          style: widget.style,
+          style: style,
           child: TabsContainer(
             node: node,
             registry: widget.layout.registry,
-            style: widget.style,
+            style: style,
             isMaximized: identical(_maximized, node),
             onToggleMaximize: () => _toggleMaximize(node),
             onClose: (i) {
@@ -524,8 +461,7 @@ class _DockAdsState extends State<DockAds> {
             onAutoHide: (panelId) {
               if (!mounted) return;
               setState(() {
-                widget.layout
-                    .autoHide(panelId); // will pick declared/preferred side
+                widget.layout.autoHide(panelId);
                 _simplifyTree();
               });
             },
@@ -535,14 +471,10 @@ class _DockAdsState extends State<DockAds> {
                 _removePanelEverywhere(widget.layout.root, panelId);
 
                 const w = 420.0, h = 300.0;
-                final desired =
-                    startGlobal - const Offset(w / 2, 36); // title under cursor
+                final desired = startGlobal - const Offset(w / 2, 36);
                 final clamped = _clampFloatPos(desired, const Size(w, h));
                 _floats.add(_FloatWin(
-                  panelId: panelId,
-                  pos: clamped,
-                  size: const Size(w, h),
-                ));
+                    panelId: panelId, pos: clamped, size: const Size(w, h)));
                 _simplifyTree();
               });
             },
@@ -551,7 +483,7 @@ class _DockAdsState extends State<DockAds> {
               setState(() {
                 _drag.isDragging = true;
                 _drag.draggingPanelId = panelId;
-                _dragSourceKey = key; // REMEMBER SOURCE
+                _dragSourceKey = key;
               });
             },
             onDragUpdate: _updateHover,
@@ -577,38 +509,30 @@ class _DockAdsState extends State<DockAds> {
           ob?.size.center(Offset.zero) ?? const Offset(640, 360);
       final anchor = originGlobal ?? screenCenter;
 
-      // put title bar under finger/cursor (≈36px top chrome)
       final desired = anchor - const Offset(w / 2, 36);
       final clamped = _clampFloatPos(desired, const Size(w, h));
 
-      _floats.add(_FloatWin(
-        panelId: panelId,
-        pos: clamped,
-        size: const Size(w, h),
-      ));
-
-      _simplifyTree(); // remove empty containers left behind
+      _floats.add(
+          _FloatWin(panelId: panelId, pos: clamped, size: const Size(w, h)));
+      _simplifyTree();
     });
   }
 
-  /// Dock a panel to an application edge (same as your drag-to-edge).
   void dockPanelToEdge(String panelId, DockSide side) {
     if (!mounted) return;
     setState(() {
-      _dockToEdge(panelId, side); // already removes from everywhere
-      _simplifyTree(); // collapse gaps after split
+      _dockToEdge(panelId, side);
+      _simplifyTree();
     });
   }
 
-  /// Dock a panel into a specific container+zone (programmatic drag-end).
-  /// If you don't have a key, prefer `dockPanelToEdge`.
   void dockPanelInto(String panelId, GlobalKey targetKey, DropZone zone) {
     final target = _containerByKey[targetKey];
     if (target == null) return;
     if (!mounted) return;
     setState(() {
       _dockInto(target, zone, panelId);
-      _simplifyTree(); // collapse any emptied branch
+      _simplifyTree();
     });
   }
 
@@ -632,12 +556,35 @@ class _DockAdsState extends State<DockAds> {
     return rb.globalToLocal(global);
   }
 
+  Rect? _dockHostRect(DockStyle style) {
+    final rb = _hostKey.currentContext?.findRenderObject() as RenderBox?;
+    if (rb == null || !rb.attached || !rb.hasSize) return null;
+
+    final hasLeft =
+        (widget.layout.autoHidden[AutoSide.left] ?? const []).isNotEmpty;
+    final hasRight =
+        (widget.layout.autoHidden[AutoSide.right] ?? const []).isNotEmpty;
+    final hasBottom =
+        (widget.layout.autoHidden[AutoSide.bottom] ?? const []).isNotEmpty;
+
+    final padL = hasLeft ? style.stripThickness : 0.0;
+    final padR = hasRight ? style.stripThickness : 0.0;
+    final padB = hasBottom ? style.stripThickness : 0.0;
+
+    final size = rb.size;
+    return Rect.fromLTWH(
+      padL,
+      0,
+      size.width - padL - padR,
+      size.height - padB,
+    );
+  }
+
   // When no container is hit, classify edges against the overlay host
   DropZone _classifyOverlayEdges(Rect rect, Offset p) {
     final w = rect.width, h = rect.height;
     final left = Rect.fromLTWH(rect.left, rect.top, w * 0.25, h);
     final right = Rect.fromLTWH(rect.left + w * 0.75, rect.top, w * 0.25, h);
-    // NO TOP band
     final bottom = Rect.fromLTWH(rect.left, rect.top + h * 0.75, w, h * 0.25);
 
     if (left.contains(p)) return DropZone.left;
@@ -651,8 +598,9 @@ class _DockAdsState extends State<DockAds> {
     GlobalKey? bestKey;
     DropZone zone = DropZone.none;
 
-    final host = _dockHostRect();
-    final pHost = _globalToHost(global); // <<< convert once
+    final style = widget.styleOverride ?? DockStyle.fromTheme(context);
+    final host = _dockHostRect(style);
+    final pHost = _globalToHost(global);
 
     // 1) Prefer edges when near bands (host-local comparisons!)
     if (host != null) {
@@ -683,17 +631,13 @@ class _DockAdsState extends State<DockAds> {
       }
 
       final box = key.currentContext!.findRenderObject() as RenderBox;
-      final rect = Rect.fromLTWH(
-        box.localToGlobal(Offset.zero).dx,
-        box.localToGlobal(Offset.zero).dy,
-        box.size.width,
-        box.size.height,
-      );
+      final tl = box.localToGlobal(Offset.zero);
+      final rect = Rect.fromLTWH(tl.dx, tl.dy, box.size.width, box.size.height);
 
       if (rect.contains(global)) {
         bestRect = rect;
         bestKey = key;
-        zone = _classifyZone(rect, global); // container cross
+        zone = _classifyZone(rect, global);
         break;
       }
     }
@@ -706,7 +650,7 @@ class _DockAdsState extends State<DockAds> {
     if (bestRect == null && host != null) {
       bestRect = host;
       bestKey = null;
-      zone = DropZone.none; // no suggestion if not near bands or container
+      zone = DropZone.none;
     }
 
     setState(() {
@@ -723,7 +667,6 @@ class _DockAdsState extends State<DockAds> {
       case DropZone.right:
         return DockSide.right;
       case DropZone.top:
-        // if you don't support DockSide.top in your model, map to bottom (or add it)
         return DockSide.bottom;
       case DropZone.bottom:
         return DockSide.bottom;
@@ -741,7 +684,6 @@ class _DockAdsState extends State<DockAds> {
     if (id == null || zone == DropZone.none) return;
 
     if (key == null) {
-      // No container target → app-edge docking
       final side = _zoneToSide(zone);
       if (side != null) {
         setState(() {
@@ -837,10 +779,7 @@ class _DockAdsState extends State<DockAds> {
 
   void _splitAround(ContainerNode target, DropZone zone, String panelId) {
     final newContainer = ContainerNode(
-      panelIds: [panelId],
-      activeIndex: 0,
-      side: DockSide.center,
-    );
+        panelIds: [panelId], activeIndex: 0, side: DockSide.center);
     if (identical(widget.layout.root, target)) {
       widget.layout.root = _splitForZone(zone, target, newContainer);
     } else {
@@ -881,8 +820,10 @@ class _DockAdsState extends State<DockAds> {
   }
 
   DropZone _classifyZone(Rect rect, Offset p) {
-    final tabbar = Rect.fromLTWH(
-        rect.left, rect.top, rect.width, widget.style.tabbarHeight);
+    final style = widget.styleOverride ?? DockStyle.fromTheme(context);
+
+    final tabbar =
+        Rect.fromLTWH(rect.left, rect.top, rect.width, style.tabbarHeight);
     final left =
         Rect.fromLTWH(rect.left, rect.top, rect.width * 0.25, rect.height);
     final right = Rect.fromLTWH(rect.left + rect.width * 0.75, rect.top,
@@ -891,8 +832,12 @@ class _DockAdsState extends State<DockAds> {
         Rect.fromLTWH(rect.left, rect.top, rect.width, rect.height * 0.25);
     final bottom = Rect.fromLTWH(rect.left, rect.top + rect.height * 0.75,
         rect.width, rect.height * 0.25);
-    final center = Rect.fromLTWH(rect.left + rect.width * 0.25,
-        rect.top + rect.height * 0.25, rect.width * 0.5, rect.height * 0.5);
+    final center = Rect.fromLTWH(
+      rect.left + rect.width * 0.25,
+      rect.top + rect.height * 0.25,
+      rect.width * 0.5,
+      rect.height * 0.5,
+    );
 
     if (tabbar.contains(p)) return DropZone.tabbar;
     if (left.contains(p)) return DropZone.left;
@@ -907,10 +852,10 @@ class _DockAdsState extends State<DockAds> {
     final ob = _overlayBox();
     if (ob == null || !ob.hasSize) return pos;
 
-    final view = ob.size; // overlay is in global space (0,0) origin
-    const pad = 8.0; // margin from screen edges
-    const visX = 64.0; // minimal visible width
-    const visY = 32.0; // minimal visible height (e.g., titlebar)
+    final view = ob.size;
+    const pad = 8.0;
+    const visX = 64.0;
+    const visY = 32.0;
 
     final minX = -winSize.width + visX + pad;
     final maxX = view.width - visX - pad;
@@ -929,9 +874,29 @@ class _DockAdsState extends State<DockAds> {
     return Offset(x, y);
   }
 
-  Rect? _currentTargetRect() {
+  Rect? _rectForInOverlay(GlobalKey childKey) {
+    if (!_isKeyActive(childKey)) return null;
+
+    final overlayCtx = _hostKey.currentContext;
+    final overlayBox = overlayCtx?.findRenderObject() as RenderBox?;
+    if (overlayBox == null || !overlayBox.hasSize || !overlayBox.attached) {
+      return null;
+    }
+
+    final childBox = childKey.currentContext!.findRenderObject() as RenderBox;
+    final topLeftGlobal = childBox.localToGlobal(Offset.zero);
+    final topLeftLocal = overlayBox.globalToLocal(topLeftGlobal);
+    return Rect.fromLTWH(
+      topLeftLocal.dx,
+      topLeftLocal.dy,
+      childBox.size.width,
+      childBox.size.height,
+    );
+  }
+
+  Rect? _currentTargetRect(DockStyle style) {
     if (_drag.targetKey == null) {
-      return _dockHostRect(); // edges mode anchor
+      return _dockHostRect(style);
     }
     final tk = _drag.targetKey!;
     final r = _rectForInOverlay(tk);
@@ -940,7 +905,23 @@ class _DockAdsState extends State<DockAds> {
     final node = _containerByKey.remove(tk);
     if (node != null) _keyByContainer.remove(node);
     _drag.targetKey = null;
-    return _dockHostRect();
+    return _dockHostRect(style);
+  }
+
+  void _removePanelCompletely(String id) {
+    _removePanelEverywhere(widget.layout.root, id);
+    for (final s in widget.layout.autoHidden.keys) {
+      widget.layout.autoHidden[s]!.remove(id);
+    }
+    _floats.removeWhere((f) => f.panelId == id);
+    if (_flyPanelId == id) {
+      _flyPanelId = null;
+      _flySide = null;
+    }
+
+    setState(() {
+      _simplifyTree();
+    });
   }
 
   void _dockToEdge(String panelId, DockSide side) {
@@ -962,7 +943,6 @@ class _DockAdsState extends State<DockAds> {
             SplitNode(axis: SplitAxis.vertical, ratio: .75, a: r, b: fresh);
         break;
       case DockSide.center:
-        // Not a real edge; treat as split for completeness
         widget.layout.root =
             SplitNode(axis: SplitAxis.vertical, ratio: .50, a: r, b: fresh);
         break;
@@ -973,17 +953,102 @@ class _DockAdsState extends State<DockAds> {
 class _ContainerFrame extends StatelessWidget {
   final Widget child;
   final DockStyle style;
-  const _ContainerFrame(
-      {super.key, required this.child, this.style = const DockStyle()});
+
+  const _ContainerFrame({super.key, required this.child, required this.style});
+
   @override
   Widget build(BuildContext context) {
     return Container(
       decoration: BoxDecoration(
         color: style.surface,
-        border: Border.all(color: style.border, width: 1),
       ),
       child: child,
     );
+  }
+}
+
+/// ---------- Dock guides overlay (cross + edges) ----------
+class _DockGuidesOverlay extends StatelessWidget {
+  final Rect? targetRect;
+  final DropZone hoverZone;
+  final DockStyle style;
+
+  const _DockGuidesOverlay({
+    required this.targetRect,
+    required this.hoverZone,
+    required this.style,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    if (targetRect == null) return const SizedBox.shrink();
+    final r = targetRect!;
+
+    const double s = 28.0; // button size
+    const double pad = 8.0;
+
+    final double reserveTop = style.tabbarHeight;
+    final double reserveLeft = style.stripThickness;
+    final double reserveRight = style.stripThickness;
+    final double reserveBottom = style.stripThickness;
+
+    final inner = Rect.fromLTRB(
+      r.left + reserveLeft + pad + s / 2,
+      r.top + reserveTop + pad + s / 2,
+      r.right - reserveRight - pad - s / 2,
+      r.bottom - reserveBottom - pad - s / 2,
+    );
+
+    if (inner.width < s || inner.height < s) return const SizedBox.shrink();
+
+    Offset clampPoint(Offset p) => Offset(
+          p.dx.clamp(inner.left, inner.right),
+          p.dy.clamp(inner.top, inner.bottom),
+        );
+
+    Widget btn(DropZone z, IconData icon, Offset c) {
+      if (!inner.inflate(0.01).contains(c)) return const SizedBox.shrink();
+
+      final sel = z == hoverZone;
+      return Positioned(
+        left: c.dx - s / 2,
+        top: c.dy - s / 2,
+        width: s,
+        height: s,
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            color: sel
+                ? style.accent.withValues(alpha: .95)
+                : style.accent.withValues(alpha: .90),
+            border: Border.all(color: style.border, width: 1),
+            borderRadius: BorderRadius.circular(6),
+            boxShadow: const [
+              BoxShadow(color: Color(0x55000000), blurRadius: 10)
+            ],
+          ),
+          child: Icon(icon, size: 14, color: style.iconColorBlueBg),
+        ),
+      );
+    }
+
+    final cx = (inner.left + inner.right) / 2;
+    final cy = (inner.top + inner.bottom) / 2;
+
+    final leftC = clampPoint(Offset(inner.left, cy));
+    final rightC = clampPoint(Offset(inner.right, cy));
+    final topC = clampPoint(Offset(cx, inner.top));
+    final bottomC = clampPoint(Offset(cx, inner.bottom));
+    final centerC = clampPoint(Offset(cx, cy));
+
+    final children = <Widget>[
+      btn(DropZone.left, WindowsIcons.dock_left, leftC),
+      btn(DropZone.right, WindowsIcons.dock_right, rightC),
+      btn(DropZone.top, WindowsIcons.dock_bottom, topC),
+      btn(DropZone.bottom, WindowsIcons.dock_bottom, bottomC),
+      btn(DropZone.center, WindowsIcons.dock, centerC), // ✅ fixed
+    ];
+
+    return IgnorePointer(child: Stack(children: children));
   }
 }
 
@@ -1093,109 +1158,5 @@ class _FloatingPanel extends StatelessWidget {
         ),
       ),
     );
-  }
-}
-
-/// ---------- Dock guides overlay (cross + edges) ----------
-class _DockGuidesOverlay extends StatelessWidget {
-  final Rect? targetRect;
-  final DropZone hoverZone;
-  final DockStyle style;
-
-  const _DockGuidesOverlay({
-    required this.targetRect,
-    required this.hoverZone,
-    required this.style,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    if (targetRect == null) return const SizedBox.shrink();
-    final r = targetRect!;
-
-    // Visuals
-    const double s = 28.0; // button size
-    const double pad = 8.0; // breathing room from edges
-
-    // Reserve space that must not be overlapped
-    final double reserveTop = style.tabbarHeight; // tabbar area (containers)
-    final double reserveLeft = style.stripThickness; // auto-hide strip
-    final double reserveRight = style.stripThickness; // auto-hide strip
-    final double reserveBottom = style.stripThickness; // bottom strip
-
-    // Build an inner rect where buttons must live
-    final inner = Rect.fromLTRB(
-      r.left + reserveLeft + pad + s / 2,
-      r.top + reserveTop + pad + s / 2,
-      r.right - reserveRight - pad - s / 2,
-      r.bottom - reserveBottom - pad - s / 2,
-    );
-
-    if (inner.width < s || inner.height < s) {
-      // Area too tight → nothing to draw
-      return const SizedBox.shrink();
-    }
-
-    // Helpers
-    Offset clampPoint(Offset p) => Offset(
-          p.dx.clamp(inner.left, inner.right),
-          p.dy.clamp(inner.top, inner.bottom),
-        );
-
-    Widget btn(DropZone z, IconData icon, Offset c) {
-      // Hide if outside inner rect (can happen on extreme sizes)
-      if (!inner.inflate(0.01).contains(c)) return const SizedBox.shrink();
-
-      final sel = z == hoverZone;
-      return Positioned(
-        left: c.dx - s / 2,
-        top: c.dy - s / 2,
-        width: s,
-        height: s,
-        child: DecoratedBox(
-          decoration: BoxDecoration(
-            color: sel
-                ? (style.accent).withValues(alpha: .95)
-                : style.surface2.withValues(alpha: .90),
-            border: Border.all(color: style.border, width: 1),
-            borderRadius: BorderRadius.circular(6),
-            boxShadow: const [
-              BoxShadow(color: Color(0x55000000), blurRadius: 10),
-            ],
-          ),
-          child: Icon(icon, size: 14, color: style.text),
-        ),
-      );
-    }
-
-    // Ideal centers
-    final cx = (inner.left + inner.right) / 2;
-    final cy = (inner.top + inner.bottom) / 2;
-
-    // Edge positions (kept inside inner)
-    final leftC = clampPoint(Offset(inner.left, cy));
-    final rightC = clampPoint(Offset(inner.right, cy));
-    final topC = clampPoint(Offset(cx, inner.top));
-    final bottomC = clampPoint(Offset(cx, inner.bottom));
-    final centerC = clampPoint(Offset(cx, cy));
-
-    final children = <Widget>[
-      // Left / Right
-      btn(DropZone.left, WindowsIcons.dock_left, leftC),
-      btn(DropZone.right, WindowsIcons.dock_right, rightC),
-
-      // Top / Bottom
-      btn(
-        DropZone.top,
-        // Flip the bottom icon to point up
-        WindowsIcons.dock_bottom,
-        topC.translate(0, 0),
-      ),
-      btn(DropZone.bottom, WindowsIcons.dock_bottom, bottomC),
-    ];
-
-    children.add(btn(DropZone.left, WindowsIcons.dock, centerC));
-
-    return IgnorePointer(child: Stack(children: children));
   }
 }

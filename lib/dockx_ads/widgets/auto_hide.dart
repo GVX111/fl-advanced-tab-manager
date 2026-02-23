@@ -12,18 +12,17 @@ class AutoHideStrip extends StatelessWidget {
   final DockStyle style;
   final AutoSide? activeSide;
   final String? activeId;
-  const AutoHideStrip({
-    super.key,
-    required this.hidden,
-    required this.titleOf,
-    required this.onShowFlyout,
-    this.onBeginDrag,
-    this.onDragUpdate,
-    this.onDragEnd,
-    this.activeSide,
-    this.activeId,
-    this.style = const DockStyle(),
-  });
+  const AutoHideStrip(
+      {super.key,
+      required this.hidden,
+      required this.titleOf,
+      required this.onShowFlyout,
+      this.onBeginDrag,
+      this.onDragUpdate,
+      this.onDragEnd,
+      this.activeSide,
+      this.activeId,
+      required this.style});
 
   @override
   Widget build(BuildContext context) {
@@ -341,75 +340,97 @@ class AutoHideFlyout extends StatefulWidget {
     required this.onDragStart,
     required this.onDragUpdate,
     required this.onDragEnd,
-    this.style = const DockStyle(),
+    required this.style,
   });
 
   @override
   State<AutoHideFlyout> createState() => _AutoHideFlyoutState();
 }
 
-class _AutoHideFlyoutState extends State<AutoHideFlyout> {
-  bool _visible = false;
-
+class _AutoHideFlyoutState extends State<AutoHideFlyout>
+    with SingleTickerProviderStateMixin {
   // Only the resizable dimension is stored:
   //  - left/right: store width
   //  - bottom: store height
   double? _w; // used for left/right
   double? _h; // used for bottom
 
+  late final AnimationController _ctrl;
+  late Animation<Offset> _slide;
+  late Animation<double> _fade;
+
+  bool _closing = false;
+
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) setState(() => _visible = true);
-    });
+    _ctrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 200),
+      reverseDuration: const Duration(milliseconds: 180),
+    );
+
+    _fade = CurvedAnimation(
+        parent: _ctrl,
+        curve: Curves.easeOutCubic,
+        reverseCurve: Curves.easeInCubic);
+
+    _rebuildSlide(); // based on side
+    _ctrl.forward();
   }
 
-  Offset _startDir() {
-    switch (widget.side) {
-      case AutoSide.left:
-        return const Offset(-1, 0);
-      case AutoSide.right:
-        return const Offset(1, 0);
-      case AutoSide.bottom:
-        return const Offset(0, 1);
+  @override
+  void didUpdateWidget(covariant AutoHideFlyout oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.side != widget.side) {
+      _rebuildSlide();
     }
   }
 
-  void _requestClose() {
+  void _rebuildSlide() {
+    // slide in from the side (fraction of its own size)
+    final begin = switch (widget.side) {
+      AutoSide.left => const Offset(-0.08, 0),
+      AutoSide.right => const Offset(0.08, 0),
+      AutoSide.bottom => const Offset(0, 0.10),
+    };
+    _slide = Tween<Offset>(begin: begin, end: Offset.zero).animate(
+      CurvedAnimation(
+          parent: _ctrl,
+          curve: Curves.easeOutCubic,
+          reverseCurve: Curves.easeInCubic),
+    );
+    // no setState needed; transition reads animation
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _requestClose() async {
+    if (_closing) return;
+    _closing = true;
+
+    await _ctrl.reverse(); // ✅ wait for animation to finish
     if (!mounted) return;
-    setState(() => _visible = false);
-    Future.delayed(const Duration(milliseconds: 220), () {
-      if (mounted) widget.onClose();
-    });
+    widget.onClose();
   }
 
   @override
   Widget build(BuildContext context) {
     final size = MediaQuery.of(context).size;
 
-    // Strict 100% dimension per side
     final isVertical = widget.side != AutoSide.bottom; // left/right
-    // Left/Right => height = 100%
-    // Bottom     => width  = 100%
-
-    // Clamp ranges for the resizable dimension only
     final minW = 220.0;
     final maxW = (size.width * 0.8).clamp(minW, size.width);
     final minH = 160.0;
     final maxH = (size.height * 0.8).clamp(minH, size.height);
 
-    // Effective size:
-    // - vertical: width is adjustable, height forced to full viewport
-    // - bottom:   height is adjustable, width forced to full viewport
-    final double w = isVertical
-        ? (_w ?? 360.0).clamp(minW, maxW)
-        : size.width; // 100% for bottom
-    final double h = isVertical
-        ? size.height // 100% for left/right
-        : (_h ?? 280.0).clamp(minH, maxH);
+    final double w = isVertical ? (_w ?? 360.0).clamp(minW, maxW) : size.width;
+    final double h = isVertical ? size.height : (_h ?? 280.0).clamp(minH, maxH);
 
-    // Position against strips
     final left = widget.side == AutoSide.left
         ? widget.style.stripThickness
         : (widget.side == AutoSide.right
@@ -419,27 +440,21 @@ class _AutoHideFlyoutState extends State<AutoHideFlyout> {
         ? size.height - h - widget.style.stripThickness
         : 0.0;
 
-    Offset? down;
-    final begin = Offset(
-      _startDir().dx * widget.style.flyoutAnimationOffset,
-      _startDir().dy * widget.style.flyoutAnimationOffset,
-    );
-
     // Resizers (affect only the free dimension)
     void _resizeWidth(double dx) {
-      if (!isVertical) return; // bottom doesn't resize width
+      if (!isVertical) return;
       final sign = (widget.side == AutoSide.left) ? 1.0 : -1.0;
       final next = (w + sign * dx).clamp(minW, maxW);
       if (next != w) setState(() => _w = next);
     }
 
     void _resizeHeight(double dy) {
-      if (isVertical) return; // left/right don't resize height
-      final sign = -1.0; // top grip: dragging up (-dy) grows
-      final next = (h + sign * dy).clamp(minH, maxH);
+      if (isVertical) return;
+      final next = (h - dy).clamp(minH, maxH); // dragging up (-dy) grows
       if (next != h) setState(() => _h = next);
     }
 
+    Offset? down;
     final header = _FlyoutHeader(
       title: widget.title,
       style: widget.style,
@@ -476,66 +491,68 @@ class _AutoHideFlyoutState extends State<AutoHideFlyout> {
       ),
     );
 
-    // Grips
-    final grips = <Widget>[];
-    if (widget.side == AutoSide.left) {
-      grips.add(Positioned(
-        right: 0,
-        top: 0,
-        bottom: 0,
-        width: 6,
-        child: _SideResizeBar(onDragDeltaX: _resizeWidth, style: widget.style),
-      ));
-    } else if (widget.side == AutoSide.right) {
-      grips.add(Positioned(
-        left: 0,
-        top: 0,
-        bottom: 0,
-        width: 6,
-        child: _SideResizeBar(onDragDeltaX: _resizeWidth, style: widget.style),
-      ));
-    } else if (widget.side == AutoSide.bottom) {
-      grips.add(Positioned(
-        left: 0,
-        right: 0,
-        top: 0,
-        height: 6,
-        child: _TopResizeBar(onDragDeltaY: _resizeHeight, style: widget.style),
-      ));
-    }
+    final grips = <Widget>[
+      if (widget.side == AutoSide.left)
+        Positioned(
+          right: 0,
+          top: 0,
+          bottom: 0,
+          width: 6,
+          child:
+              _SideResizeBar(onDragDeltaX: _resizeWidth, style: widget.style),
+        ),
+      if (widget.side == AutoSide.right)
+        Positioned(
+          left: 0,
+          top: 0,
+          bottom: 0,
+          width: 6,
+          child:
+              _SideResizeBar(onDragDeltaX: _resizeWidth, style: widget.style),
+        ),
+      if (widget.side == AutoSide.bottom)
+        Positioned(
+          left: 0,
+          right: 0,
+          top: 0,
+          height: 6,
+          child:
+              _TopResizeBar(onDragDeltaY: _resizeHeight, style: widget.style),
+        ),
+    ];
 
-    return Stack(children: [
-      // click outside to close
-      Positioned.fill(
-        child: GestureDetector(
-          behavior: HitTestBehavior.opaque,
-          onTap: _requestClose,
-          child: Container(color: const Color(0x00000000)),
-        ),
-      ),
-      AnimatedPositioned(
-        duration: const Duration(milliseconds: 200),
-        curve: Curves.easeOutCubic,
-        left: left,
-        top: top,
-        width: w,
-        height: h,
-        child: TweenAnimationBuilder<Offset>(
-          tween: Tween<Offset>(
-            begin: _visible ? Offset.zero : begin,
-            end: _visible ? Offset.zero : begin,
+    return Stack(
+      children: [
+        // ✅ Positioned.fill must be direct Stack child
+        Positioned.fill(
+          child: FadeTransition(
+            opacity: _fade,
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: _requestClose,
+              child: Container(color: const Color(0x00000000)),
+            ),
           ),
-          duration: const Duration(milliseconds: 220),
-          curve: Curves.easeOutCubic,
-          builder: (_, offset, child) =>
-              Transform.translate(offset: offset, child: child),
-          child: Stack(children: [body, ...grips]),
         ),
-      ),
-    ]);
+
+        // ✅ Positioned must be direct Stack child
+        Positioned(
+          left: left,
+          top: top,
+          width: w,
+          height: h,
+          child: FadeTransition(
+            opacity: _fade,
+            child: SlideTransition(
+              position: _slide,
+              child: Stack(children: [body, ...grips]),
+            ),
+          ),
+        ),
+      ],
+    );
   }
 }
-
 // ======= header and grips (unchanged, theme-aware) =================
 
 class _FlyoutHeader extends StatefulWidget {

@@ -7,7 +7,6 @@ import 'package:fl_advanced_tab_manager/dockx_ads/core/persistence.dart';
 import 'package:flutter/services.dart'; // Clipboard
 import 'package:fluent_ui/fluent_ui.dart';
 import 'dockx_ads/widgets/dock_view.dart';
-import 'dockx_ads/core/theme.dart';
 
 void main() {
   runApp(const DockXAdsDemo());
@@ -21,11 +20,7 @@ class DockXAdsDemo extends StatelessWidget {
     return FluentApp(
       debugShowCheckedModeBanner: false,
       theme: FluentThemeData(
-        brightness: Brightness.dark,
-        scaffoldBackgroundColor: IDETheme.background,
-        cardColor: IDETheme.surface,
-        accentColor: Colors.blue,
-        inactiveColor: IDETheme.border,
+        brightness: Brightness.light,
       ),
       home: const _Home(),
     );
@@ -392,7 +387,7 @@ class _Editor extends StatelessWidget {
 Widget _header(String text) => Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       decoration: const BoxDecoration(
-        border: Border(bottom: BorderSide(color: IDETheme.border)),
+        border: Border(bottom: BorderSide()),
       ),
       alignment: Alignment.centerLeft,
       child: Text(
@@ -405,7 +400,7 @@ Widget _fileHeader(String name) => Container(
       alignment: Alignment.centerLeft,
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       decoration: const BoxDecoration(
-        border: Border(bottom: BorderSide(color: IDETheme.border)),
+        border: Border(bottom: BorderSide()),
       ),
       child: Text(
         name,

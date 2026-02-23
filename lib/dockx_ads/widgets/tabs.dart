@@ -26,7 +26,7 @@ class TabsContainer extends StatefulWidget {
     super.key,
     required this.node,
     required this.registry,
-    this.style = const DockStyle(),
+    required this.style,
     this.onClose,
     required this.onAutoHide,
     required this.onFloatRequest,
@@ -50,8 +50,8 @@ class _TabsContainerState extends State<TabsContainer> {
     if (ids.isEmpty) {
       return Container(
         color: widget.style.surface,
-        child: const Center(
-          child: Text('Empty', style: TextStyle(color: IDETheme.text)),
+        child: Center(
+          child: Text('Empty', style: TextStyle(color: widget.style.text)),
         ),
       );
     }
@@ -67,7 +67,8 @@ class _TabsContainerState extends State<TabsContainer> {
             height: 32,
             decoration: BoxDecoration(
               color: widget.style.surface,
-              border: Border(bottom: BorderSide(color: widget.style.border)),
+              border: Border(
+                  bottom: BorderSide(color: widget.style.border, width: 1)),
             ),
             child: GestureDetector(
               // NEW: double-click on the tabbar background toggles maximize
@@ -119,6 +120,7 @@ class _TabsContainerState extends State<TabsContainer> {
                               ? widget.style.minimizeIcone
                               : widget.style.maximizeIcon,
                           size: 12,
+                          // IMPORTANT: no color here, let the style control it
                         ),
                         onPressed: widget.onToggleMaximize,
                         style: ButtonStyle(
@@ -126,11 +128,14 @@ class _TabsContainerState extends State<TabsContainer> {
                               WidgetStateProperty.all(const EdgeInsets.all(4)),
                           backgroundColor:
                               WidgetStateProperty.resolveWith((states) {
-                            // subtle hover highlight
                             if (states.isHovered) return widget.style.accent;
                             return widget.style.surface;
                           }),
-                          // optional: small border to match your theme
+                          foregroundColor:
+                              WidgetStateProperty.resolveWith((states) {
+                            if (states.isHovered) return Colors.white;
+                            return widget.style.text;
+                          }),
                         ),
                       ),
                     ),
@@ -141,7 +146,6 @@ class _TabsContainerState extends State<TabsContainer> {
         // Active content
         Expanded(
           child: Container(
-            color: widget.style.background,
             child: Builder(
               builder: (ctx) {
                 final id = ids[active];
@@ -205,12 +209,11 @@ class _TabWidgetStateProperty extends State<_TabButton> {
 
   @override
   Widget build(BuildContext context) {
-    final baseBg =
-        widget.isActive ? widget.style.background : widget.style.surface;
-    final bg = _hover ? widget.style.surface2 : baseBg; // hover bg
-    final borderBottomColor =
-        widget.isActive ? widget.style.background : widget.style.border;
-    final borderTopColor = _hover ? (widget.style.accent) : widget.style.border;
+    final borderTopColor = widget.isActive
+        ? widget.style.accent
+        : widget.style.accent.withValues(alpha: 0);
+    final borderColor = widget.style.border;
+    final borderTopWidth = widget.isActive ? 2.0 : 1.0;
 
     return MouseRegion(
       cursor: SystemMouseCursors.click,
@@ -270,24 +273,19 @@ class _TabWidgetStateProperty extends State<_TabButton> {
           padding: const EdgeInsets.symmetric(horizontal: 12),
           alignment: Alignment.center,
           decoration: BoxDecoration(
-            color: bg,
             border: Border(
-              top: BorderSide(color: borderTopColor, width: 2),
-              left: BorderSide(color: widget.style.border),
-              right: BorderSide(color: widget.style.border),
-              bottom: BorderSide(color: borderBottomColor),
+              top: BorderSide(color: borderTopColor, width: borderTopWidth),
+              right: BorderSide(color: borderColor, width: 1),
             ),
           ),
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Text(widget.title,
-                  style: TextStyle(color: widget.style.text, fontSize: 12)),
+              Text(widget.title, style: TextStyle(fontSize: 12)),
               if (widget.onPinPressed != null) ...[
                 const SizedBox(width: 18),
                 IconButton(
-                  icon: Icon(widget.style.iconPin,
-                      size: 12, color: widget.style.text),
+                  icon: Icon(widget.style.iconPin, size: 12),
                   onPressed: widget.onPinPressed,
                   style: _iconBtnStyle(),
                 ),
@@ -295,8 +293,7 @@ class _TabWidgetStateProperty extends State<_TabButton> {
               if (widget.onClose != null) ...[
                 const SizedBox(width: 6),
                 IconButton(
-                  icon: Icon(widget.style.iconClose,
-                      size: 10, color: widget.style.text),
+                  icon: Icon(widget.style.iconClose, size: 10),
                   onPressed: widget.onClose,
                   style: _iconBtnStyle(),
                 ),

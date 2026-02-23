@@ -22,7 +22,7 @@ class SplitView extends StatefulWidget {
     required this.node,
     required this.aBuilder,
     required this.bBuilder,
-    this.style = const DockStyle(),
+    required this.style,
     this.minFraction = 0.10,
     this.handleThickness = 8.0,
   });
