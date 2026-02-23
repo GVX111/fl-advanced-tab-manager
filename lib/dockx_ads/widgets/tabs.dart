@@ -195,7 +195,6 @@ class _TabWidgetStateProperty extends State<_TabButton> {
   bool _dragging = false;
   int _tapCount = 0;
   DateTime? _lastTapAt;
-  bool _hover = false; // hover state for the chip
 
   ButtonStyle _iconBtnStyle() {
     return ButtonStyle(
@@ -217,8 +216,6 @@ class _TabWidgetStateProperty extends State<_TabButton> {
 
     return MouseRegion(
       cursor: SystemMouseCursors.click,
-      onEnter: (_) => setState(() => _hover = true),
-      onExit: (_) => setState(() => _hover = false),
       child: Listener(
         onPointerDown: (e) {
           // NEW: middle-click closes this tab immediately on desktop
