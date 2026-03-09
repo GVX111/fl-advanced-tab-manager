@@ -1,3 +1,4 @@
-## 0.4.4+2 - Advanced docking panel
+## 0.4.6+1 - Advanced docking panel
 
-- Initial release.
+- Feat: tab manager
+- Auto Hide placeholders
