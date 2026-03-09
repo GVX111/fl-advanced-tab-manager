@@ -101,6 +101,8 @@ class _DockAdsState extends State<DockAds> {
   @override
   Widget build(BuildContext context) {
     final style = widget.styleOverride ?? DockStyle.fromTheme(context);
+    final draggingAutoHidden = _drag.draggingPanelId != null &&
+        widget.layout.isAutoHidden(_drag.draggingPanelId!);
 
     final hasLeft =
         (widget.layout.autoHidden[AutoSide.left] ?? const []).isNotEmpty;
@@ -303,7 +305,7 @@ class _DockAdsState extends State<DockAds> {
           ),
 
         // Dock guides (cross + edges)
-        if (_drag.isDragging)
+        if (_drag.isDragging && !draggingAutoHidden)
           _DockGuidesOverlay(
             targetRect: _currentTargetRect(style),
             hoverZone:
@@ -386,7 +388,12 @@ class _DockAdsState extends State<DockAds> {
         }),
 
         // target highlight (DragOverlay tolerates null)
-        DragOverlay(drag: _drag, targetRect: _currentTargetRect(style)),
+        DragOverlay(
+          drag: _drag,
+          targetRect:
+              draggingAutoHidden ? _drag.hoverRect : _currentTargetRect(style),
+          edgeOnly: draggingAutoHidden,
+        ),
       ],
     );
 
@@ -586,6 +593,35 @@ class _DockAdsState extends State<DockAds> {
     );
   }
 
+  Rect? _autoHideTargetRect(DockStyle style, DropZone zone) {
+    final rb = _hostKey.currentContext?.findRenderObject() as RenderBox?;
+    if (rb == null || !rb.attached || !rb.hasSize) return null;
+
+    final full = Offset.zero & rb.size;
+    final band = style.stripThickness > IDETheme.edgeSnapBand
+        ? style.stripThickness
+        : IDETheme.edgeSnapBand.toDouble();
+
+    switch (zone) {
+      case DropZone.left:
+        return Rect.fromLTWH(full.left, full.top, band, full.height);
+      case DropZone.right:
+        return Rect.fromLTWH(full.right - band, full.top, band, full.height);
+      case DropZone.bottom:
+        return Rect.fromLTWH(full.left, full.bottom - band, full.width, band);
+      default:
+        return null;
+    }
+  }
+
+  DropZone _classifyAutoHideStripTarget(DockStyle style, Offset pHost) {
+    for (final zone in const [DropZone.left, DropZone.right, DropZone.bottom]) {
+      final rect = _autoHideTargetRect(style, zone);
+      if (rect != null && rect.contains(pHost)) return zone;
+    }
+    return DropZone.none;
+  }
+
   // When no container is hit, classify edges against the overlay host
   DropZone _classifyOverlayEdges(Rect rect, Offset p) {
     final w = rect.width, h = rect.height;
@@ -600,6 +636,7 @@ class _DockAdsState extends State<DockAds> {
   }
 
   void _updateHover(Offset global) {
+    _drag.lastGlobalPos = global;
     Rect? bestRect;
     GlobalKey? bestKey;
     DropZone zone = DropZone.none;
@@ -607,6 +644,20 @@ class _DockAdsState extends State<DockAds> {
     final style = widget.styleOverride ?? DockStyle.fromTheme(context);
     final host = _dockHostRect(style);
     final pHost = _globalToHost(global);
+    final draggingAutoHidden = _drag.draggingPanelId != null &&
+        widget.layout.isAutoHidden(_drag.draggingPanelId!);
+
+    if (draggingAutoHidden) {
+      final autoHideZone = _classifyAutoHideStripTarget(style, pHost);
+      if (autoHideZone != DropZone.none) {
+        setState(() {
+          _drag.hoverRect = _autoHideTargetRect(style, autoHideZone);
+          _drag.hoverZone = autoHideZone;
+          _drag.targetKey = null;
+        });
+        return;
+      }
+    }
 
     // 1) Prefer edges when near bands (host-local comparisons!)
     if (host != null) {
@@ -625,6 +676,15 @@ class _DockAdsState extends State<DockAds> {
         });
         return;
       }
+    }
+
+    if (draggingAutoHidden) {
+      setState(() {
+        _drag.hoverRect = host;
+        _drag.hoverZone = DropZone.none;
+        _drag.targetKey = null;
+      });
+      return;
     }
 
     // 2) Container hit-test (global coords as before)
