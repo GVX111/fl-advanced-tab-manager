@@ -150,14 +150,23 @@ class DockStyle {
     final accent = theme.accentColor;
 
     // Most apps treat "scaffoldBackgroundColor" as true background.
-    final background = theme.scaffoldBackgroundColor;
+    final background = _opaqueColor(
+      theme.scaffoldBackgroundColor,
+      fallback: isDark ? const Color(0xFF202020) : const Color(0xFFF3F3F3),
+    );
 
     // Use a slightly elevated surface for panels.
     // If cardColor is not set, fall back to micaBackgroundColor or background.
-    final surface = theme.cardColor;
+    final surface = _opaqueColor(
+      theme.cardColor,
+      fallback: isDark ? const Color(0xFF2C2C2C) : const Color(0xFFFFFFFF),
+    );
 
     // A second surface level (slightly different from surface).
-    final surface2 = theme.micaBackgroundColor;
+    final surface2 = _opaqueColor(
+      theme.micaBackgroundColor,
+      fallback: isDark ? const Color(0xFF252526) : const Color(0xFFF8F8F8),
+    );
 
     // Borders: fluent often uses subtle dividers.
     // theme.inactiveColor is a decent subtle border-ish color across modes.
@@ -287,5 +296,10 @@ class DockStyle {
       minimizeIcone: minimizeIcone,
       flyoutAnimationOffset: flyoutAnimationOffset,
     );
+  }
+
+  static Color _opaqueColor(Color color, {required Color fallback}) {
+    if (color.a == 1.0) return color;
+    return Color.alphaBlend(color, fallback);
   }
 }

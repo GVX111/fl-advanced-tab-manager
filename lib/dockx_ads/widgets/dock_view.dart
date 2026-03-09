@@ -209,10 +209,16 @@ class _DockAdsState extends State<DockAds> {
           Positioned.fill(
             bottom: hasBottom ? style.stripThickness : 0,
             child: AutoHideFlyout(
+              key: ValueKey('flyout_${_flySide!.name}_${_flyPanelId!}'),
               side: _flySide!,
               panelId: _flyPanelId!,
               title: widget.layout.registry.getById(_flyPanelId!).title,
               content: Container(child: _buildPanelContent(_flyPanelId!)),
+              initialExtent:
+                  widget.layout.autoHideExtentFor(_flyPanelId!, _flySide!),
+              onExtentChanged: (extent) {
+                widget.layout.setAutoHideExtent(_flyPanelId!, extent);
+              },
 
               // PIN: unhide to its declared side
               onPin: (side, id) {
@@ -913,6 +919,7 @@ class _DockAdsState extends State<DockAds> {
     for (final s in widget.layout.autoHidden.keys) {
       widget.layout.autoHidden[s]!.remove(id);
     }
+    widget.layout.clearAutoHideExtent(id);
     _floats.removeWhere((f) => f.panelId == id);
     if (_flyPanelId == id) {
       _flyPanelId = null;

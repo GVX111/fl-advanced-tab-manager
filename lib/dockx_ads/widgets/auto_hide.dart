@@ -320,6 +320,8 @@ class AutoHideFlyout extends StatefulWidget {
   final String panelId;
   final String title;
   final Widget content;
+  final double initialExtent;
+  final ValueChanged<double>? onExtentChanged;
   final void Function(AutoSide side, String panelId) onPin;
   final void Function() onClose;
   final void Function(Offset globalStart, String panelId) onDragStart;
@@ -334,6 +336,8 @@ class AutoHideFlyout extends StatefulWidget {
     required this.panelId,
     required this.title,
     required this.content,
+    required this.initialExtent,
+    this.onExtentChanged,
     required this.onPin,
     required this.onClose,
     required this.onRemove,
@@ -364,6 +368,7 @@ class _AutoHideFlyoutState extends State<AutoHideFlyout>
   @override
   void initState() {
     super.initState();
+    _applyInitialExtent();
     _ctrl = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 200),
@@ -384,6 +389,21 @@ class _AutoHideFlyoutState extends State<AutoHideFlyout>
     super.didUpdateWidget(oldWidget);
     if (oldWidget.side != widget.side) {
       _rebuildSlide();
+    }
+    if (oldWidget.panelId != widget.panelId ||
+        oldWidget.side != widget.side ||
+        oldWidget.initialExtent != widget.initialExtent) {
+      _applyInitialExtent();
+    }
+  }
+
+  void _applyInitialExtent() {
+    if (widget.side == AutoSide.bottom) {
+      _w = null;
+      _h = widget.initialExtent;
+    } else {
+      _h = null;
+      _w = widget.initialExtent;
     }
   }
 
@@ -428,8 +448,12 @@ class _AutoHideFlyoutState extends State<AutoHideFlyout>
     final minH = 160.0;
     final maxH = (size.height * 0.8).clamp(minH, size.height);
 
-    final double w = isVertical ? (_w ?? 360.0).clamp(minW, maxW) : size.width;
-    final double h = isVertical ? size.height : (_h ?? 280.0).clamp(minH, maxH);
+    final double w = isVertical
+        ? (_w ?? widget.initialExtent).clamp(minW, maxW)
+        : size.width;
+    final double h = isVertical
+        ? size.height
+        : (_h ?? widget.initialExtent).clamp(minH, maxH);
 
     final left = widget.side == AutoSide.left
         ? widget.style.stripThickness
@@ -445,13 +469,19 @@ class _AutoHideFlyoutState extends State<AutoHideFlyout>
       if (!isVertical) return;
       final sign = (widget.side == AutoSide.left) ? 1.0 : -1.0;
       final next = (w + sign * dx).clamp(minW, maxW);
-      if (next != w) setState(() => _w = next);
+      if (next != w) {
+        setState(() => _w = next);
+        widget.onExtentChanged?.call(next);
+      }
     }
 
     void _resizeHeight(double dy) {
       if (isVertical) return;
       final next = (h - dy).clamp(minH, maxH); // dragging up (-dy) grows
-      if (next != h) setState(() => _h = next);
+      if (next != h) {
+        setState(() => _h = next);
+        widget.onExtentChanged?.call(next);
+      }
     }
 
     Offset? down;

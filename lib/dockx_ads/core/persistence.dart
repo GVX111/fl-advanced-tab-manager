@@ -39,6 +39,7 @@ class DockPersistence {
         'bottom':
             List<String>.from(layout.autoHidden[AutoSide.bottom] ?? const []),
       },
+      'autoHideExtent': Map<String, double>.from(layout.autoHideExtent),
     };
   }
 
@@ -134,6 +135,13 @@ class DockPersistence {
     );
 
     // After loading strips, make sure container tabs don’t include hidden ids.
+    final extentMap = (map['autoHideExtent'] as Map?) ?? const {};
+    layout.autoHideExtent.addAll(
+      extentMap.map((key, value) => MapEntry(
+            key.toString(),
+            (value as num).toDouble(),
+          )),
+    );
     _pruneAutoHiddenPanels(layout);
 
     return layout;

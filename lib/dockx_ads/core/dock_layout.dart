@@ -8,6 +8,9 @@ import 'package:fl_advanced_tab_manager/dockx_ads/core/enums/split_node.dart';
 import 'package:fl_advanced_tab_manager/dockx_ads/core/split_node.dart';
 
 class DockLayout {
+  static const double defaultAutoHideWidth = 360.0;
+  static const double defaultAutoHideHeight = 280.0;
+
   DockNode root;
   final DockPanelRegistry registry;
 
@@ -22,6 +25,7 @@ class DockLayout {
     AutoSide.right: <String>[],
     AutoSide.bottom: <String>[],
   };
+  final Map<String, double> autoHideExtent = <String, double>{};
 
   // ---- helpers for auto-hide ----
 
@@ -29,7 +33,7 @@ class DockLayout {
       autoHidden.values.any((list) => list.contains(id));
 
   /// Hide a panel to a strip (default to its preferred / declared side).
-  void autoHide(String id, {AutoSide? side}) {
+  void autoHide(String id, {AutoSide? side, double? initialExtent}) {
     // remove from containers first
     removePanel(id);
     final DockSide declared = registry.getById(id).position;
@@ -39,6 +43,8 @@ class DockLayout {
     if (!autoHidden[strip]!.contains(id)) {
       autoHidden[strip]!.add(id);
     }
+    autoHideExtent[id] =
+        initialExtent ?? autoHideExtent[id] ?? defaultAutoHideExtentFor(strip);
   }
 
   /// Remove a panel from all strips (if present).
@@ -64,6 +70,27 @@ class DockLayout {
     final c = _ensureContainerForSide(side);
     c.panelIds.add(id);
     if (activate) c.activateById(id);
+  }
+
+  double autoHideExtentFor(String id, AutoSide side) =>
+      autoHideExtent[id] ?? defaultAutoHideExtentFor(side);
+
+  void setAutoHideExtent(String id, double extent) {
+    autoHideExtent[id] = extent;
+  }
+
+  void clearAutoHideExtent(String id) {
+    autoHideExtent.remove(id);
+  }
+
+  static double defaultAutoHideExtentFor(AutoSide side) {
+    switch (side) {
+      case AutoSide.left:
+      case AutoSide.right:
+        return defaultAutoHideWidth;
+      case AutoSide.bottom:
+        return defaultAutoHideHeight;
+    }
   }
 
   AutoSide _toAuto(DockSide s) {
@@ -96,6 +123,7 @@ class DockLayout {
           'right': List<String>.from(autoHidden[AutoSide.right] ?? const []),
           'bottom': List<String>.from(autoHidden[AutoSide.bottom] ?? const []),
         },
+        'autoHideExtent': Map<String, double>.from(autoHideExtent),
       };
 
   String exportPerspectiveJson() => jsonEncode(toJson());
@@ -115,6 +143,13 @@ class DockLayout {
         List<String>.from((ah['right'] ?? const []) as List);
     layout.autoHidden[AutoSide.bottom] =
         List<String>.from((ah['bottom'] ?? const []) as List);
+    final extentMap = (j['autoHideExtent'] as Map?) ?? const {};
+    layout.autoHideExtent.addAll(
+      extentMap.map((key, value) => MapEntry(
+            key.toString(),
+            (value as num).toDouble(),
+          )),
+    );
 
     // Remove hidden ids from containers so they truly move to strips
     _pruneAutoHiddenPanels(layout);
@@ -545,6 +580,7 @@ class DockLayout {
     autoHidden[AutoSide.left]!.clear();
     autoHidden[AutoSide.right]!.clear();
     autoHidden[AutoSide.bottom]!.clear();
+    autoHideExtent.clear();
     preferredSide.clear();
     root = DockLayout.empty(registry).root;
     return true;
