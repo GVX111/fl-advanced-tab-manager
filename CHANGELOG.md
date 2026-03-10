@@ -1,4 +1,3 @@
-## 0.4.6+1 - Advanced docking panel
+## 0.4.6+2 - Advanced docking panel
 
-- Feat: tab manager
-- Auto Hide placeholders
+- Update Fluent UI Package

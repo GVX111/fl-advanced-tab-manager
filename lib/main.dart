@@ -230,8 +230,8 @@ class _HomeState extends State<_Home> {
   @override
   Widget build(BuildContext context) {
     return NavigationView(
-      appBar: NavigationAppBar(
-        actions: SizedBox(
+      titleBar: TitleBar(
+        content: SizedBox(
           height: 40, // keep command bar constrained
           child: CommandBar(
             overflowBehavior: CommandBarOverflowBehavior.scrolling,

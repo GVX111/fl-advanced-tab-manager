@@ -143,7 +143,7 @@ class DockStyle {
   /// Build a style based on current FluentTheme (auto light/dark).
   factory DockStyle.fromTheme(BuildContext context) {
     final theme = FluentTheme.of(context);
-    final isDark = theme.brightness.isDark;
+    final isDark = theme.brightness == Brightness.dark;
 
     // Fluent UI gives you a lot, but not everything in one place.
     // We’ll derive a consistent “IDE-like” palette from available theme colors.
