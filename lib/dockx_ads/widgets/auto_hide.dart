@@ -264,8 +264,11 @@ class _DraggableStripButtonState extends State<_DraggableStripButton> {
         _hover || widget.active; // treat active same as hover
     final borderTopColor =
         highlight ? (widget.style.accent) : widget.style.border;
-    final bgColor =
-        highlight ? widget.style.stripButtonHover : widget.style.surface;
+    // A chip that stands out from the strip, with readable text.
+    final bgColor = highlight
+        ? widget.style.accent.withValues(alpha: 0.85)
+        : Color.lerp(widget.style.surface2, widget.style.text, 0.10)!;
+    final fg = highlight ? widget.style.iconColorBlueBg : widget.style.text;
     return MouseRegion(
       onEnter: (_) => setState(() => _hover = true),
       onExit: (_) => setState(() => _hover = false),
@@ -307,7 +310,7 @@ class _DraggableStripButtonState extends State<_DraggableStripButton> {
           ),
           child: Text(
             widget.text,
-            style: TextStyle(color: widget.style.text, fontSize: 12),
+            style: TextStyle(color: fg, fontSize: 12, fontWeight: FontWeight.w600),
           ),
         ),
       ),
@@ -439,8 +442,18 @@ class _AutoHideFlyoutState extends State<AutoHideFlyout>
   }
 
   @override
-  Widget build(BuildContext context) {
-    final size = MediaQuery.of(context).size;
+  Widget build(BuildContext context) => LayoutBuilder(
+        // The flyout is laid out in the dock area, not the whole window:
+        // sizing it from the window cut its bottom and right edge off.
+        builder: (context, box) => _build(
+          Size(
+            box.hasBoundedWidth ? box.maxWidth : MediaQuery.of(context).size.width,
+            box.hasBoundedHeight ? box.maxHeight : MediaQuery.of(context).size.height,
+          ),
+        ),
+      );
+
+  Widget _build(Size size) {
 
     final isVertical = widget.side != AutoSide.bottom; // left/right
     final minW = 220.0;
@@ -460,9 +473,8 @@ class _AutoHideFlyoutState extends State<AutoHideFlyout>
         : (widget.side == AutoSide.right
             ? size.width - w - widget.style.stripThickness
             : 0.0);
-    final top = widget.side == AutoSide.bottom
-        ? size.height - h - widget.style.stripThickness
-        : 0.0;
+    // The dock area already ends above the bottom strip.
+    final top = widget.side == AutoSide.bottom ? size.height - h : 0.0;
 
     // Resizers (affect only the free dimension)
     void _resizeWidth(double dx) {

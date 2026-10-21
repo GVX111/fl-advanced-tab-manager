@@ -20,7 +20,7 @@ class DockXAdsDemo extends StatelessWidget {
     return FluentApp(
       debugShowCheckedModeBanner: false,
       theme: FluentThemeData(
-        brightness: Brightness.light,
+        brightness: Brightness.dark,
       ),
       home: const _Home(),
     );
@@ -231,8 +231,9 @@ class _HomeState extends State<_Home> {
   Widget build(BuildContext context) {
     return NavigationView(
       titleBar: TitleBar(
-        content: SizedBox(
+        title: SizedBox(
           height: 40, // keep command bar constrained
+          width: 400,
           child: CommandBar(
             overflowBehavior: CommandBarOverflowBehavior.scrolling,
             primaryItems: [
@@ -256,6 +257,15 @@ class _HomeState extends State<_Home> {
                 label: const Text('Inspector (Right)'),
                 onPressed: _addInspector,
               ),
+            ],
+          ),
+        ),
+        content: SizedBox(
+          height: 40, // keep command bar constrained
+          width: 300,
+          child: CommandBar(
+            overflowBehavior: CommandBarOverflowBehavior.scrolling,
+            primaryItems: [
               CommandBarButton(
                 icon: const Icon(FluentIcons.s_i_p_move),
                 label: const Text('Console (Bottom)'),

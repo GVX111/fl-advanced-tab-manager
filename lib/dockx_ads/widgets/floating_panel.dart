@@ -53,18 +53,31 @@ class _FloatTitleBarState extends State<FloatTitleBar> {
         height: widget.height,
         padding: const EdgeInsets.symmetric(horizontal: 8),
         decoration: BoxDecoration(
-          color: widget.style.surface2,
-          border: Border(bottom: BorderSide(color: widget.style.border)),
+          color: widget.style.accent,
+          border: Border(
+            bottom: BorderSide(color: widget.style.border),
+          ),
         ),
         child: Row(
           children: [
-            Text(widget.title, style: const TextStyle(fontSize: 12)),
+            Text(
+              widget.title,
+              style: TextStyle(
+                fontSize: 12,
+                color: widget.style.iconColorBlueBg,
+              ),
+            ),
             const Spacer(),
             IconButton(
               icon: const Icon(FluentIcons.chrome_close, size: 10),
               onPressed: widget.onClose,
               style: ButtonStyle(
-                backgroundColor: WidgetStateProperty.all(widget.style.surface),
+                backgroundColor: WidgetStateProperty.all(
+                  widget.style.accent.withValues(alpha: .85),
+                ),
+                foregroundColor: WidgetStateProperty.all(
+                  widget.style.iconColorBlueBg,
+                ),
                 padding: WidgetStateProperty.all(const EdgeInsets.all(6)),
               ),
             ),
@@ -124,18 +137,31 @@ class _TitleBarState extends State<_TitleBar> {
         height: widget.height,
         padding: const EdgeInsets.symmetric(horizontal: 8),
         decoration: BoxDecoration(
-          color: widget.style.surface2,
-          border: Border(bottom: BorderSide(color: widget.style.border)),
+          color: widget.style.accent,
+          border: Border(
+            bottom: BorderSide(color: widget.style.border),
+          ),
         ),
         child: Row(
           children: [
-            Text(widget.title, style: const TextStyle(fontSize: 12)),
+            Text(
+              widget.title,
+              style: TextStyle(
+                fontSize: 12,
+                color: widget.style.iconColorBlueBg,
+              ),
+            ),
             const Spacer(),
             IconButton(
               icon: const Icon(FluentIcons.chrome_close, size: 10),
               onPressed: widget.onClose,
               style: ButtonStyle(
-                backgroundColor: WidgetStateProperty.all(widget.style.surface),
+                backgroundColor: WidgetStateProperty.all(
+                  widget.style.accent.withValues(alpha: .85),
+                ),
+                foregroundColor: WidgetStateProperty.all(
+                  widget.style.iconColorBlueBg,
+                ),
                 padding: WidgetStateProperty.all(const EdgeInsets.all(6)),
               ),
             ),

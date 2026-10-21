@@ -459,6 +459,15 @@ class DockLayout {
       else if (identical(parent.b, target)) parent.b = replacement;
     }
     _simplifyAfterMutation(); // <- important
+
+    final axis = switch (zone) {
+      DropZone.left || DropZone.right => SplitAxis.horizontal,
+      DropZone.top || DropZone.bottom => SplitAxis.vertical,
+      DropZone.center || DropZone.tabbar || DropZone.none => null,
+    };
+    if (axis != null) {
+      _rebalanceEqualPanels(axis: axis, side: add.side);
+    }
   }
 
 // Create a brand-new leaf at an edge, keep edge width/height constant across multiple inserts.
@@ -469,8 +478,9 @@ class DockLayout {
     required bool activate,
     double? fraction,
   }) {
-    final double fDefault = (side == DockSide.bottom) ? 0.32 : 0.22;
-    final double f = (fraction ?? fDefault).clamp(0.05, 0.90);
+    final axis =
+        side == DockSide.bottom ? SplitAxis.vertical : SplitAxis.horizontal;
+    final double f = (fraction ?? 0.5).clamp(0.05, 0.90);
 
     final leaf = ContainerNode(
       panelIds: [id],
@@ -497,8 +507,12 @@ class DockLayout {
       return;
     }
 
-    // Normalize all edge leaves so each takes a constant fraction f (doesn't shrink every time).
-    _rebalanceEdge(side, f);
+    if (fraction != null) {
+      // Respect explicit edge sizing when the caller provides one.
+      _rebalanceEdge(side, f);
+    } else if (root is SplitNode && (root as SplitNode).axis == axis) {
+      _rebalanceAxisSlotsEvenly(root as SplitNode);
+    }
   }
 
 // Keep all leaves on the same edge at the same global size fraction.
@@ -542,6 +556,61 @@ class DockLayout {
         cur = (cur.a is SplitNode) ? cur.a as SplitNode : null;
       }
     }
+  }
+
+  void _rebalanceEqualPanels({
+    required SplitAxis axis,
+    required DockSide side,
+  }) {
+    int rebalance(DockNode node) {
+      if (node is ContainerNode) {
+        return node.side == side ? 1 : 0;
+      }
+      if (node is! SplitNode || node.axis != axis) {
+        return 0;
+      }
+
+      final aCount = rebalance(node.a);
+      final bCount = rebalance(node.b);
+      final total = aCount + bCount;
+
+      if (aCount > 0 && bCount > 0) {
+        node.ratio = aCount / total;
+      }
+
+      return total;
+    }
+
+    rebalance(root);
+  }
+
+  int _rebalanceAxisSlotsEvenly(DockNode node) {
+    if (node is! SplitNode) {
+      return 1;
+    }
+
+    if (node.axis != SplitAxis.horizontal && node.axis != SplitAxis.vertical) {
+      return 1;
+    }
+
+    int aCount;
+    int bCount;
+
+    if (node.a is SplitNode && (node.a as SplitNode).axis == node.axis) {
+      aCount = _rebalanceAxisSlotsEvenly(node.a);
+    } else {
+      aCount = 1;
+    }
+
+    if (node.b is SplitNode && (node.b as SplitNode).axis == node.axis) {
+      bCount = _rebalanceAxisSlotsEvenly(node.b);
+    } else {
+      bCount = 1;
+    }
+
+    final total = aCount + bCount;
+    node.ratio = aCount / total;
+    return total;
   }
 
 // Parent lookup (you already had a version)
@@ -597,6 +666,9 @@ class DockLayout {
         if (!removeAll) return;
       }
     });
+    // A container left without panels is dropped, so no "Empty" area stays
+    // behind (e.g. a placeholder removed after a panel was added next to it).
+    if (removed) _simplifyAfterMutation();
     return removed;
   }
 

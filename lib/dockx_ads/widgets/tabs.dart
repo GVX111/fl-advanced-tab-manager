@@ -64,9 +64,9 @@ class _TabsContainerState extends State<TabsContainer> {
         // Tab strip (hidden if hideTabBar == true)
         if (!widget.hideTabBar)
           Container(
-            height: 32,
+            height: 30,
             decoration: BoxDecoration(
-              color: widget.style.surface,
+              color: widget.style.accent,
               border: Border(
                   bottom: BorderSide(color: widget.style.border, width: 1)),
             ),
@@ -77,7 +77,10 @@ class _TabsContainerState extends State<TabsContainer> {
               child: Row(
                 children: [
                   Expanded(
-                    child: ListView.builder(
+                    // A tab is never wider than the strip: its title shrinks
+                    // (and scrolls) so pin and close stay visible.
+                    child: LayoutBuilder(
+                      builder: (ctx, box) => ListView.builder(
                       scrollDirection: Axis.horizontal,
                       itemCount: ids.length,
                       itemBuilder: (ctx, i) {
@@ -85,6 +88,7 @@ class _TabsContainerState extends State<TabsContainer> {
                         final isActive = i == active;
                         final title = widget.registry.getById(id).title;
                         return _TabButton(
+                          maxWidth: box.maxWidth,
                           title: title,
                           isActive: isActive,
                           style: widget.style,
@@ -109,6 +113,7 @@ class _TabsContainerState extends State<TabsContainer> {
                         );
                       },
                     ),
+                    ),
                   ),
                   // NEW: small expand/restore button at the far right
                   if (widget.onToggleMaximize != null)
@@ -128,8 +133,10 @@ class _TabsContainerState extends State<TabsContainer> {
                               WidgetStateProperty.all(const EdgeInsets.all(4)),
                           backgroundColor:
                               WidgetStateProperty.resolveWith((states) {
-                            if (states.isHovered) return widget.style.accent;
-                            return widget.style.surface;
+                            if (states.isHovered)
+                              return widget.style.surface
+                                  .withValues(alpha: 0.5);
+                            return widget.style.accent;
                           }),
                           foregroundColor:
                               WidgetStateProperty.resolveWith((states) {
@@ -162,6 +169,9 @@ class _TabsContainerState extends State<TabsContainer> {
 
 class _TabButton extends StatefulWidget {
   final String title;
+
+  /// Width of the tab strip: the tab never grows past it.
+  final double maxWidth;
   final bool isActive;
   final DockStyle style;
   final VoidCallback onTap;
@@ -175,6 +185,7 @@ class _TabButton extends StatefulWidget {
 
   const _TabButton({
     required this.title,
+    this.maxWidth = double.infinity,
     required this.isActive,
     required this.style,
     required this.onTap,
@@ -206,13 +217,26 @@ class _TabWidgetStateProperty extends State<_TabButton> {
     );
   }
 
+  final _titleScroll = ScrollController();
+
+  @override
+  void dispose() {
+    _titleScroll.dispose();
+    super.dispose();
+  }
+
   @override
   Widget build(BuildContext context) {
+    // The active tab joins the panel below it (solid panel colour, bright
+    // marker on top, bold text); the others sit dimmer on the tab strip.
     final borderTopColor = widget.isActive
-        ? widget.style.accent
-        : widget.style.accent.withValues(alpha: 0);
+        ? widget.style.iconColorBlueBg
+        : const Color(0x00000000);
     final borderColor = widget.style.border;
-    final borderTopWidth = widget.isActive ? 2.0 : 1.0;
+    const borderTopWidth = 2.0;
+    final fg = widget.isActive
+        ? widget.style.text
+        : widget.style.text.withValues(alpha: 0.72);
 
     return MouseRegion(
       cursor: SystemMouseCursors.click,
@@ -267,9 +291,13 @@ class _TabWidgetStateProperty extends State<_TabButton> {
           _tapCount = 0;
         },
         child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12),
+          constraints: BoxConstraints(maxWidth: widget.maxWidth),
+          padding: const EdgeInsets.only(left: 12, right: 6),
           alignment: Alignment.center,
           decoration: BoxDecoration(
+            color: widget.isActive
+                ? widget.style.surface
+                : const Color(0x00000000),
             border: Border(
               top: BorderSide(color: borderTopColor, width: borderTopWidth),
               right: BorderSide(color: borderColor, width: 1),
@@ -278,9 +306,28 @@ class _TabWidgetStateProperty extends State<_TabButton> {
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Text(widget.title, style: TextStyle(fontSize: 12)),
+              Flexible(
+                child: Tooltip(
+                  message: widget.title,
+                  child: SingleChildScrollView(
+                    controller: _titleScroll,
+                    scrollDirection: Axis.horizontal,
+                    child: Text(
+                      widget.title,
+                      maxLines: 1,
+                      softWrap: false,
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: fg,
+                        fontWeight:
+                            widget.isActive ? FontWeight.w600 : FontWeight.w400,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
               if (widget.onPinPressed != null) ...[
-                const SizedBox(width: 18),
+                const SizedBox(width: 10),
                 IconButton(
                   icon: Icon(widget.style.iconPin, size: 12),
                   onPressed: widget.onPinPressed,
