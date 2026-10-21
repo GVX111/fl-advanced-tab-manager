@@ -217,14 +217,6 @@ class _TabWidgetStateProperty extends State<_TabButton> {
     );
   }
 
-  final _titleScroll = ScrollController();
-
-  @override
-  void dispose() {
-    _titleScroll.dispose();
-    super.dispose();
-  }
-
   @override
   Widget build(BuildContext context) {
     // The active tab joins the panel below it (solid panel colour, bright
@@ -291,9 +283,10 @@ class _TabWidgetStateProperty extends State<_TabButton> {
           _tapCount = 0;
         },
         child: Container(
+          // No alignment: with a max width it would stretch every tab to the
+          // whole strip (the Row centres vertically on its own).
           constraints: BoxConstraints(maxWidth: widget.maxWidth),
           padding: const EdgeInsets.only(left: 12, right: 6),
-          alignment: Alignment.center,
           decoration: BoxDecoration(
             color: widget.isActive
                 ? widget.style.surface
@@ -306,22 +299,22 @@ class _TabWidgetStateProperty extends State<_TabButton> {
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
+              // Only as wide as the title (a scroll view would take the whole
+              // strip and push the other tabs out); shortened with … when the
+              // strip is narrow, the full title in the tooltip.
               Flexible(
                 child: Tooltip(
                   message: widget.title,
-                  child: SingleChildScrollView(
-                    controller: _titleScroll,
-                    scrollDirection: Axis.horizontal,
-                    child: Text(
-                      widget.title,
-                      maxLines: 1,
-                      softWrap: false,
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: fg,
-                        fontWeight:
-                            widget.isActive ? FontWeight.w600 : FontWeight.w400,
-                      ),
+                  child: Text(
+                    widget.title,
+                    maxLines: 1,
+                    softWrap: false,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: fg,
+                      fontWeight:
+                          widget.isActive ? FontWeight.w600 : FontWeight.w400,
                     ),
                   ),
                 ),

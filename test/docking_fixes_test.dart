@@ -111,7 +111,7 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('in a narrow strip a tab keeps pin and close visible, the title shrinks', (tester) async {
+  testWidgets('in a narrow strip a tab keeps pin and close visible, the title shrinks with …', (tester) async {
     final reg = registry(['Kennfeld Beginnwinkel ES1 Superklopfen präventiv (very long title)']);
     final node = ContainerNode(panelIds: [reg.ids.first]);
     await tester.pumpWidget(
@@ -144,6 +144,44 @@ void main() {
     final pin = tester.getRect(find.byIcon(style.iconPin));
     expect(close.right, lessThanOrEqualTo(160));
     expect(pin.right, lessThanOrEqualTo(160));
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('several tabs in one container are all shown side by side', (tester) async {
+    final reg = registry(['Angle > Base', 'Coils', 'Trailing spark']);
+    final node = ContainerNode(panelIds: reg.ids.toList());
+    await tester.pumpWidget(
+      app(
+        Align(
+          alignment: Alignment.topLeft,
+          child: SizedBox(
+            width: 700,
+            height: 200,
+            child: Builder(
+              builder: (context) => TabsContainer(
+                node: node,
+                registry: reg,
+                style: DockStyle.fromTheme(context),
+                onClose: (i) {},
+                onAutoHide: (id) {},
+                onFloatRequest: (a, b) {},
+                onDragStart: (a, b) {},
+                onDragUpdate: (p) {},
+                onDragEnd: () {},
+                isMaximized: false,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    for (final t in ['Angle > Base', 'Coils', 'Trailing spark']) {
+      final r = tester.getRect(find.text(t));
+      expect(r.left, greaterThanOrEqualTo(0), reason: t);
+      expect(r.right, lessThanOrEqualTo(700), reason: '$t is inside the strip');
+    }
+    // Each tab only as wide as its title (plus pin and close), not the strip.
+    expect(tester.getRect(find.text('Coils')).left, lessThan(350));
     expect(tester.takeException(), isNull);
   });
 }

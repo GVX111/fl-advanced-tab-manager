@@ -1,3 +1,7 @@
+## 0.4.8 - Tab strip fix
+
+- Fix 0.4.7: every tab took the whole width of the strip, so only one tab of a container was visible. Tabs are as wide as their title again; a long title is shortened with … (full title in the tooltip) and pin and close stay visible.
+
 ## 0.4.7 - Docking fixes
 
 - Removing a panel drops the container it leaves empty (no "Empty" area left behind, e.g. after a placeholder panel is replaced).
