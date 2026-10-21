@@ -32,6 +32,11 @@ class DockLayout {
   /// when the user clicks into a container.
   String? focusedPanelId;
 
+  /// Where dropped containers were, by group id (or panel id when the
+  /// container had no group): a panel added again without a drop zone goes
+  /// back there instead of to a default place.
+  final Map<String, _Place> _places = {};
+
   // ---- helpers for auto-hide ----
 
   bool isAutoHidden(String id) =>
@@ -315,6 +320,15 @@ class DockLayout {
     preferredSide[id] = desiredSide;
     final String? groupId = spec.groupId;
 
+    // ---------- back where its container was closed ----------
+    final placeKey = groupId ?? id;
+    if (zone == null &&
+        _places.containsKey(placeKey) &&
+        (groupId == null || findContainerByGroup(groupId) == null)) {
+      final c = ContainerNode(panelIds: [id], side: desiredSide, groupId: groupId);
+      if (_restorePlace(placeKey, c)) return;
+    }
+
     // ---------- CENTER + groupId ----------
     if (desiredSide == DockSide.center && groupId != null) {
       // if container with same group exists -> tab into it
@@ -407,21 +421,68 @@ class DockLayout {
       n.a = _collapseEmpty(n.a);
       n.b = _collapseEmpty(n.b);
 
-      // If either side is an empty ContainerNode, drop it
-      bool _isEmptyContainer(DockNode x) =>
+      // If a side is an empty ContainerNode, drop it (remembering where it
+      // was, so its panels can come back there).
+      bool isEmptyContainer(DockNode x) =>
           x is ContainerNode && x.panelIds.isEmpty;
 
-      if (_isEmptyContainer(n.a) && !_isEmptyContainer(n.b)) return n.b;
-      if (_isEmptyContainer(n.b) && !_isEmptyContainer(n.a)) return n.a;
-
-      // If both sides are splits/containers but one is degenerate, just keep as-is
+      if (isEmptyContainer(n.a)) {
+        _remember(n.a as ContainerNode, n, n.b, first: true);
+        return n.b;
+      }
+      if (isEmptyContainer(n.b)) {
+        _remember(n.b as ContainerNode, n, n.a, first: false);
+        return n.a;
+      }
       return n;
     }
     return n;
   }
 
+  void _remember(ContainerNode gone, SplitNode split, DockNode stays,
+      {required bool first}) {
+    final key = gone.groupId ?? gone.lastRemovedPanelId;
+    if (key == null) return;
+    _places[key] = _Place(stays, split.axis, split.ratio, first, gone.side);
+  }
+
+  /// Drops containers left without panels (remembering their place).
+  void simplify() => _simplifyAfterMutation();
+
   void _simplifyAfterMutation() {
     root = _collapseEmpty(root);
+  }
+
+  /// Puts [c] back where the container named [key] was dropped, when the
+  /// node it was split from is still in the layout.
+  bool _restorePlace(String key, ContainerNode c) {
+    final place = _places.remove(key);
+    if (place == null) return false;
+    DockNode? parentOf(DockNode n) {
+      if (n is! SplitNode) return null;
+      if (identical(n.a, place.stays) || identical(n.b, place.stays)) return n;
+      return parentOf(n.a) ?? parentOf(n.b);
+    }
+
+    final parent = parentOf(root);
+    if (parent == null && !identical(root, place.stays)) return false;
+    c.side = place.side;
+    final split = SplitNode(
+      axis: place.axis,
+      ratio: place.ratio,
+      a: place.first ? c : place.stays,
+      b: place.first ? place.stays : c,
+    );
+    if (parent is SplitNode) {
+      if (identical(parent.a, place.stays)) {
+        parent.a = split;
+      } else {
+        parent.b = split;
+      }
+    } else {
+      root = split;
+    }
+    return true;
   }
 
   void _splitAroundExisting(
@@ -668,6 +729,7 @@ class DockLayout {
       final idx = c.panelIds.indexOf(id);
       if (idx >= 0) {
         c.panelIds.removeAt(idx);
+        c.lastRemovedPanelId = id;
         c.clampActive();
         removed = true;
         if (!removeAll) return;
@@ -767,4 +829,15 @@ extension _Finders on DockLayout {
     });
     return hit;
   }
+}
+
+/// Where a dropped container was: split off [stays] along [axis] with
+/// [ratio], before it ([first]) or after it.
+class _Place {
+  _Place(this.stays, this.axis, this.ratio, this.first, this.side);
+  final DockNode stays;
+  final SplitAxis axis;
+  final double ratio;
+  final bool first;
+  final DockSide side;
 }

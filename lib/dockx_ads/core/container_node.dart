@@ -8,6 +8,10 @@ class ContainerNode extends DockNode {
   DockSide side;
   String? groupId;
 
+  /// The last panel taken out of the container (names the place it leaves
+  /// when it is emptied and dropped; see [DockLayout.simplify]).
+  String? lastRemovedPanelId;
+
   ContainerNode({
     required List<String> panelIds,
     this.activeIndex = 0,

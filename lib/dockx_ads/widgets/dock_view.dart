@@ -809,6 +809,7 @@ class _DockAdsState extends State<DockAds> {
 
   void _removePanelEverywhere(DockNode node, String panelId) {
     if (node is ContainerNode) {
+      if (node.panelIds.remove(panelId)) node.lastRemovedPanelId = panelId;
       node.panelIds.removeWhere((id) => id == panelId);
       if (node.activeIndex >= node.panelIds.length) {
         node.activeIndex = node.panelIds.isEmpty ? 0 : node.panelIds.length - 1;
@@ -819,28 +820,9 @@ class _DockAdsState extends State<DockAds> {
     }
   }
 
-  DockNode _collapseEmpty(DockNode node) {
-    if (node is ContainerNode) {
-      if (node.panelIds.isEmpty) {
-        return ContainerNode(panelIds: [], side: node.side);
-      }
-    } else if (node is SplitNode) {
-      node.a = _collapseEmpty(node.a);
-      node.b = _collapseEmpty(node.b);
-      if (node.a is ContainerNode &&
-          (node.a as ContainerNode).panelIds.isEmpty) {
-        return node.b;
-      }
-      if (node.b is ContainerNode &&
-          (node.b as ContainerNode).panelIds.isEmpty) {
-        return node.a;
-      }
-    }
-    return node;
-  }
-
   void _simplifyTree() {
-    widget.layout.root = _collapseEmpty(widget.layout.root);
+    // The layout drops empty containers and remembers where they were.
+    widget.layout.simplify();
     _validateMaximize();
   }
 

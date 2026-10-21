@@ -595,4 +595,88 @@ void main() {
     await tester.pumpAndSettle();
     expect(tester.widget<AutoHideFlyout>(find.byType(AutoHideFlyout)).contentPadding, EdgeInsets.zero);
   });
+
+  group('a closed container comes back where it was', () {
+    // Like the BIN desktop: maps list | centre (group "maps") | details,
+    // the logger underneath.
+    late DockPanelRegistry reg;
+    late ContainerNode list, centre, details, logger;
+    late DockLayout layout;
+    setUp(() {
+      reg = DockPanelRegistry();
+      for (final id in ['list', 'details', 'logger']) {
+        reg.register(DockPanelSpec(id: id, title: id, builder: (_) => Text(id)));
+      }
+      for (final id in ['m1', 'm2']) {
+        reg.register(DockPanelSpec(id: id, title: 'Map $id', groupId: 'maps', builder: (_) => Text('content $id')));
+      }
+      list = ContainerNode(panelIds: ['list'], side: DockSide.left);
+      centre = ContainerNode(panelIds: ['m1'], groupId: 'maps');
+      details = ContainerNode(panelIds: ['details'], side: DockSide.right);
+      logger = ContainerNode(panelIds: ['logger'], side: DockSide.bottom);
+      layout = DockLayout(
+        registry: reg,
+        root: SplitNode(
+          axis: SplitAxis.vertical,
+          ratio: 0.8,
+          a: SplitNode(
+            axis: SplitAxis.horizontal,
+            ratio: 0.25,
+            a: list,
+            b: SplitNode(axis: SplitAxis.horizontal, ratio: 0.7, a: centre, b: details),
+          ),
+          b: logger,
+        ),
+      );
+    });
+
+    testWidgets('closed with the tab button, then opened again', (tester) async {
+      tester.view.physicalSize = const Size(1200, 700);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      late DockStyle style;
+      await tester.pumpWidget(app(Builder(builder: (context) {
+        style = DockStyle.fromTheme(context);
+        return DockAds(layout: layout);
+      })));
+      final before = tester.getRect(find.text('content m1'));
+
+      // The close button of that tab: the nearest one right of its title.
+      final title = tester.getRect(find.text('Map m1'));
+      final closes = [
+        for (var i = 0; i < find.byIcon(style.iconClose).evaluate().length; i++)
+          tester.getCenter(find.byIcon(style.iconClose).at(i)),
+      ].where((c) => (c.dy - title.center.dy).abs() < 6 && c.dx > title.right).toList()
+        ..sort((x, y) => x.dx.compareTo(y.dx));
+      await tester.tapAt(closes.first);
+      await tester.pumpAndSettle();
+      expect(find.text('content m1'), findsNothing);
+
+      layout.addPanel('m2'); // e.g. another map opened from the list
+      await tester.pumpWidget(app(DockAds(layout: layout)));
+      await tester.pumpAndSettle();
+      final after = tester.getRect(find.text('content m2'));
+      expect(after.topLeft.dx, closeTo(before.topLeft.dx, 2), reason: 'between the list and the details again');
+      expect(after.topLeft.dy, closeTo(before.topLeft.dy, 2), reason: 'above the logger, not over everything');
+      expect(tester.getRect(find.text('logger').last).top, greaterThan(after.top));
+    });
+
+    test('removed by code, then added again', () {
+      layout.removePanel('m1');
+      layout.addPanel('m2');
+      final top = (layout.root as SplitNode).a as SplitNode;
+      final right = top.b as SplitNode;
+      expect(top.a, same(list));
+      expect((right.a as ContainerNode).panelIds, ['m2']);
+      expect(right.b, same(details));
+      expect(right.ratio, 0.7);
+    });
+
+    test('a panel without a group comes back to its place too', () {
+      layout.removePanel('details');
+      layout.addPanel('details', side: DockSide.right);
+      final right = ((layout.root as SplitNode).a as SplitNode).b as SplitNode;
+      expect((right.b as ContainerNode).panelIds, ['details']);
+    });
+  });
 }
