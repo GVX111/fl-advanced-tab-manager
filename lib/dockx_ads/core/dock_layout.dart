@@ -27,6 +27,11 @@ class DockLayout {
   };
   final Map<String, double> autoHideExtent = <String, double>{};
 
+  /// The panel the user works in: its container's active tab is marked
+  /// with the accent colour. Set when a panel is added or activated, and
+  /// when the user clicks into a container.
+  String? focusedPanelId;
+
   // ---- helpers for auto-hide ----
 
   bool isAutoHidden(String id) =>
@@ -305,6 +310,7 @@ class DockLayout {
     removeFromAutoHidden(id);
 
     final spec = registry.getById(id);
+    if (activate) focusedPanelId = id;
     final desiredSide = _sideFromZone(zone, side ?? spec.position);
     preferredSide[id] = desiredSide;
     final String? groupId = spec.groupId;
@@ -641,6 +647,7 @@ class DockLayout {
         activated = true;
       }
     });
+    if (activated) focusedPanelId = id;
     return activated;
   }
 

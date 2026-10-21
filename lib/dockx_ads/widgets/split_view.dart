@@ -1,3 +1,4 @@
+import 'package:fl_advanced_tab_manager/dockx_ads/core/dock_node.dart';
 import 'package:fl_advanced_tab_manager/dockx_ads/core/enums/dock_node.dart';
 import 'package:fl_advanced_tab_manager/dockx_ads/core/split_node.dart';
 import 'package:fl_advanced_tab_manager/dockx_ads/core/theme.dart';
@@ -40,6 +41,16 @@ class _SplitViewState extends State<SplitView> {
   double _accumDelta = 0.0;
   bool _dragging = false;
 
+  /// Ratios of the splits nested on both sides when the drag started: each
+  /// move is computed from them, so dragging back restores the neighbours
+  /// a move had squeezed.
+  List<(SplitNode, double)> _nestedAtStart = const [];
+
+  static List<(SplitNode, double)> _snapshot(DockNode n) => switch (n) {
+        SplitNode s => [(s, s.ratio), ..._snapshot(s.a), ..._snapshot(s.b)],
+        _ => const [],
+      };
+
   // Hover state for handle (to show highlight on hover).
   bool _hovering = false;
 
@@ -75,16 +86,35 @@ class _SplitViewState extends State<SplitView> {
 
         final handle = widget.handleThickness;
         final min = widget.minFraction.clamp(0.0, 0.5);
+        // Each side never gets smaller than its containers' minimum size
+        // (in pixels, counting the containers nested in it).
+        final minPx = _isH ? widget.style.minPanelWidth : widget.style.minPanelHeight;
+        final minA = minExtent(widget.node.a, widget.node.axis, minPx, handle);
+        final minB = minExtent(widget.node.b, widget.node.axis, minPx, handle);
         final avail = _isH ? (maxW - handle) : (maxH - handle);
 
-        final minRatio = min;
-        final maxRatio = 1.0 - min;
+        // Pixel minimums when they fit; else the old fractions.
+        final fits = avail > 0 && minA + minB <= avail;
+        final minRatio = fits ? minA / avail : min;
+        final maxRatio = fits ? 1.0 - minB / avail : 1.0 - min;
 
         double ratio;
         if (_dragging) {
           final newRatio = (_startRatio + (_accumDelta / _startAvail))
               .clamp(minRatio, maxRatio);
           if ((newRatio - widget.node.ratio).abs() > _eps) {
+            // Only the panes next to the divider change size: panes further
+            // away inside nested splits keep their size in pixels. Always
+            // from the state at the start of the drag.
+            for (final (s, r) in _nestedAtStart) {
+              s.ratio = r;
+            }
+            final oldA = _startAvail * _startRatio, newA = avail * newRatio;
+            keepFarPanes(widget.node.a, widget.node.axis, oldA, newA,
+                farIsA: true, handle: handle, minPx: minPx);
+            keepFarPanes(widget.node.b, widget.node.axis, _startAvail - oldA,
+                avail - newA,
+                farIsA: false, handle: handle, minPx: minPx);
             widget.node.ratio = newRatio;
           }
           ratio = widget.node.ratio;
@@ -100,8 +130,11 @@ class _SplitViewState extends State<SplitView> {
         return Stack(
           fit: StackFit.expand,
           children: [
+            // Keys: the highlight comes and goes before the handle; without
+            // them the handle (and a drag in progress) would be rebuilt.
             // Pane A
             Positioned(
+              key: const ValueKey('pane-a'),
               left: 0,
               top: 0,
               width: _isH ? aMain : maxW,
@@ -112,6 +145,7 @@ class _SplitViewState extends State<SplitView> {
             // HIGHLIGHT (exact same rect as the handle)
             if (showHighlight)
               Positioned(
+                key: const ValueKey('highlight'),
                 left: _isH ? aMain : 0,
                 top: _isH ? 0 : aMain,
                 width: _isH ? handle : maxW,
@@ -129,6 +163,7 @@ class _SplitViewState extends State<SplitView> {
 
             // HANDLE (same rect as highlight)
             Positioned(
+              key: const ValueKey('handle'),
               left: _isH ? aMain : 0,
               top: _isH ? 0 : aMain,
               width: _isH ? handle : maxW,
@@ -144,6 +179,10 @@ class _SplitViewState extends State<SplitView> {
                   _accumDelta = 0.0;
                   _startRatio = ratio;
                   _startAvail = avail; // freeze baseline to prevent bounce
+                  _nestedAtStart = [
+                    ..._snapshot(widget.node.a),
+                    ..._snapshot(widget.node.b),
+                  ];
                   setState(() {});
                 },
                 onUpdateDelta: (delta) {
@@ -161,6 +200,7 @@ class _SplitViewState extends State<SplitView> {
 
             // Pane B
             Positioned(
+              key: const ValueKey('pane-b'),
               left: _isH ? (aMain + handle) : 0,
               top: _isH ? 0 : (aMain + handle),
               width: _isH ? bMain : maxW,
@@ -172,6 +212,53 @@ class _SplitViewState extends State<SplitView> {
       },
     );
   }
+}
+
+/// [node] (one side of a split being resized) goes from [oldMain] to
+/// [newMain] pixels along [axis]. When it is itself split along the same
+/// axis, its ratio is adjusted so the pane away from the moved divider
+/// ([farIsA]: the first pane) keeps its size, and the change goes to the
+/// pane next to the divider (recursively).
+void keepFarPanes(
+  DockNode node,
+  SplitAxis axis,
+  double oldMain,
+  double newMain, {
+  required bool farIsA,
+  required double handle,
+  required double minPx,
+}) {
+  if (node is! SplitNode || node.axis != axis) return;
+  final oldAvail = oldMain - handle, newAvail = newMain - handle;
+  if (oldAvail <= 0 || newAvail <= 0) return;
+  final r = node.ratio.clamp(0.0, 1.0);
+  final far = oldAvail * (farIsA ? r : 1 - r);
+  // The far pane keeps its size, unless the near one would go below its
+  // minimum; then the far one gives way (down to its own minimum).
+  final minFar = minExtent(farIsA ? node.a : node.b, axis, minPx, handle);
+  final minNear = minExtent(farIsA ? node.b : node.a, axis, minPx, handle);
+  final lo = (minFar / newAvail).clamp(0.0, 1.0);
+  final hi = (1.0 - minNear / newAvail).clamp(0.0, 1.0);
+  final farFraction = lo <= hi
+      ? (far / newAvail).clamp(lo, hi).toDouble()
+      : (far / newAvail).clamp(0.0, 1.0).toDouble();
+  final newRatio = farIsA ? farFraction : 1 - farFraction;
+  final oldNear = oldAvail * (farIsA ? 1 - r : r);
+  final newNear = newAvail * (farIsA ? 1 - newRatio : newRatio);
+  node.ratio = newRatio;
+  keepFarPanes(farIsA ? node.b : node.a, axis, oldNear, newNear,
+      farIsA: farIsA, handle: handle, minPx: minPx);
+}
+
+/// Smallest size of [node] along [axis]: [minPx] per container, plus the
+/// splitters between containers placed along that axis.
+double minExtent(DockNode node, SplitAxis axis, double minPx, double handle) {
+  if (node is SplitNode) {
+    final a = minExtent(node.a, axis, minPx, handle);
+    final b = minExtent(node.b, axis, minPx, handle);
+    return node.axis == axis ? a + b + handle : (a > b ? a : b);
+  }
+  return minPx;
 }
 
 class _DragHandle extends StatelessWidget {

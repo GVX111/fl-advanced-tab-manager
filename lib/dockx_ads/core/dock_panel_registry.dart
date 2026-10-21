@@ -10,6 +10,7 @@ class DockPanelRegistry {
       builder: s.builder,
       position: s.position,
       groupId: s.groupId,
+      flyoutPadding: s.flyoutPadding,
     );
   }
 

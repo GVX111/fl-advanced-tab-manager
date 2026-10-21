@@ -44,6 +44,26 @@ class DockStyle {
   final Color border;
   final Color text;
   final Color iconColorBlueBg;
+
+  // Tab colours; null derives them from the colours above.
+  final Color? _tabStripBackground;
+  final Color? _tabFocusedActiveBackground;
+  final Color? _tabFocusedActiveText;
+  final Color? _tabActiveBackground;
+  final Color? _tabInactiveText;
+
+  /// Background of the tab strip.
+  Color get tabStripBackground => _tabStripBackground ?? surface2;
+
+  /// The active tab of the focused container (where the user works).
+  Color get tabFocusedActiveBackground => _tabFocusedActiveBackground ?? accent;
+  Color get tabFocusedActiveText => _tabFocusedActiveText ?? iconColorBlueBg;
+
+  /// The active tab of the other containers.
+  Color get tabActiveBackground => _tabActiveBackground ?? Color.lerp(surface2, text, 0.12)!;
+
+  /// Text of tabs that are not active.
+  Color get tabInactiveText => _tabInactiveText ?? text.withValues(alpha: 0.62);
   final Color accent;
 
   // Extra colors
@@ -91,6 +111,15 @@ class DockStyle {
   final IconData minimizeIcone;
   final double flyoutAnimationOffset;
 
+  /// Smallest size of a docked container (splitters stop there), so its
+  /// tabs and buttons stay usable.
+  final double minPanelWidth;
+  final double minPanelHeight;
+
+  /// Space around a panel's content in an auto-hide flyout (a panel can
+  /// override it with [DockPanelSpec.flyoutPadding]).
+  final EdgeInsets flyoutContentPadding;
+
   const DockStyle({
     required this.background,
     required this.surface,
@@ -132,13 +161,25 @@ class DockStyle {
     this.iconFloatTitle = FluentIcons.edit,
     this.iconResizeGrip = WindowsIcons.resize_mouse_medium,
     this.flyoutAnimationOffset = 28.0,
+    this.minPanelWidth = 160,
+    this.minPanelHeight = 90,
+    this.flyoutContentPadding = const EdgeInsets.all(8),
     this.dragHoverBlurSigma = 6.0,
     this.dragSourceBlurSigma = 2.0,
     this.dragBlurMs = 120,
     this.maximizeIcon = WindowsIcons.chrome_maximize,
     this.minimizeIcone = WindowsIcons.chrome_restore,
     this.iconColorBlueBg = Colors.white,
-  });
+    Color? tabStripBackground,
+    Color? tabFocusedActiveBackground,
+    Color? tabFocusedActiveText,
+    Color? tabActiveBackground,
+    Color? tabInactiveText,
+  })  : _tabStripBackground = tabStripBackground,
+        _tabFocusedActiveBackground = tabFocusedActiveBackground,
+        _tabFocusedActiveText = tabFocusedActiveText,
+        _tabActiveBackground = tabActiveBackground,
+        _tabInactiveText = tabInactiveText;
 
   /// Build a style based on current FluentTheme (auto light/dark).
   factory DockStyle.fromTheme(BuildContext context) {
@@ -247,6 +288,13 @@ class DockStyle {
     double? dragHoverBlurSigma,
     double? dragSourceBlurSigma,
     int? dragBlurMs,
+    Color? iconColorBlueBg,
+    Color? tabStripBackground,
+    Color? tabFocusedActiveBackground,
+    Color? tabFocusedActiveText,
+    Color? tabActiveBackground,
+    Color? tabInactiveText,
+    EdgeInsets? flyoutContentPadding,
   }) {
     return DockStyle(
       background: background ?? this.background,
@@ -266,6 +314,12 @@ class DockStyle {
       dragHoverBlurSigma: dragHoverBlurSigma ?? this.dragHoverBlurSigma,
       dragSourceBlurSigma: dragSourceBlurSigma ?? this.dragSourceBlurSigma,
       dragBlurMs: dragBlurMs ?? this.dragBlurMs,
+      iconColorBlueBg: iconColorBlueBg ?? this.iconColorBlueBg,
+      tabStripBackground: tabStripBackground ?? _tabStripBackground,
+      tabFocusedActiveBackground: tabFocusedActiveBackground ?? _tabFocusedActiveBackground,
+      tabFocusedActiveText: tabFocusedActiveText ?? _tabFocusedActiveText,
+      tabActiveBackground: tabActiveBackground ?? _tabActiveBackground,
+      tabInactiveText: tabInactiveText ?? _tabInactiveText,
       // keep metrics/icons as-is
       autoHideGap: autoHideGap,
       stripThickness: stripThickness,
@@ -295,6 +349,9 @@ class DockStyle {
       maximizeIcon: maximizeIcon,
       minimizeIcone: minimizeIcone,
       flyoutAnimationOffset: flyoutAnimationOffset,
+      minPanelWidth: minPanelWidth,
+      minPanelHeight: minPanelHeight,
+      flyoutContentPadding: flyoutContentPadding ?? this.flyoutContentPadding,
     );
   }
 

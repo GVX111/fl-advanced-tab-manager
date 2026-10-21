@@ -17,6 +17,9 @@ class TabsContainer extends StatefulWidget {
   final void Function(Offset globalPos) onDragUpdate;
   final VoidCallback onDragEnd;
 
+  /// The container the user works in: its active tab gets the accent.
+  final bool isFocused;
+
   // NEW: maximize for this container & optional global "hide tab bar"
   final VoidCallback? onToggleMaximize; // per-container expand/restore
   final bool hideTabBar; // global zen/expand-all flag
@@ -35,6 +38,7 @@ class TabsContainer extends StatefulWidget {
     required this.onDragEnd,
     // NEW:
     required this.isMaximized,
+    this.isFocused = false,
     this.onToggleMaximize,
     this.hideTabBar = false,
   });
@@ -65,10 +69,16 @@ class _TabsContainerState extends State<TabsContainer> {
         if (!widget.hideTabBar)
           Container(
             height: 30,
+            // A neutral strip (an accent tab on an accent strip would not
+            // stand out); the focused container's strip is underlined.
             decoration: BoxDecoration(
-              color: widget.style.accent,
+              color: widget.style.tabStripBackground,
               border: Border(
-                  bottom: BorderSide(color: widget.style.border, width: 1)),
+                  bottom: BorderSide(
+                      color: widget.isFocused
+                          ? widget.style.accent
+                          : widget.style.border,
+                      width: widget.isFocused ? 2 : 1)),
             ),
             child: GestureDetector(
               // NEW: double-click on the tabbar background toggles maximize
@@ -91,6 +101,7 @@ class _TabsContainerState extends State<TabsContainer> {
                           maxWidth: box.maxWidth,
                           title: title,
                           isActive: isActive,
+                          isFocused: widget.isFocused,
                           style: widget.style,
                           onTap: () {
                             if (!mounted) return;
@@ -119,31 +130,14 @@ class _TabsContainerState extends State<TabsContainer> {
                   if (widget.onToggleMaximize != null)
                     Padding(
                       padding: const EdgeInsets.only(right: 4),
-                      child: IconButton(
-                        icon: Icon(
-                          widget.isMaximized
-                              ? widget.style.minimizeIcone
-                              : widget.style.maximizeIcon,
-                          size: 12,
-                          // IMPORTANT: no color here, let the style control it
-                        ),
-                        onPressed: widget.onToggleMaximize,
-                        style: ButtonStyle(
-                          padding:
-                              WidgetStateProperty.all(const EdgeInsets.all(4)),
-                          backgroundColor:
-                              WidgetStateProperty.resolveWith((states) {
-                            if (states.isHovered)
-                              return widget.style.surface
-                                  .withValues(alpha: 0.5);
-                            return widget.style.accent;
-                          }),
-                          foregroundColor:
-                              WidgetStateProperty.resolveWith((states) {
-                            if (states.isHovered) return Colors.white;
-                            return widget.style.text;
-                          }),
-                        ),
+                      child: DockIconButton(
+                        icon: widget.isMaximized
+                            ? widget.style.minimizeIcone
+                            : widget.style.maximizeIcon,
+                        size: 12,
+                        color: widget.style.text,
+                        tooltip: widget.isMaximized ? 'Restore' : 'Maximize',
+                        onPressed: widget.onToggleMaximize!,
                       ),
                     ),
                 ],
@@ -173,6 +167,9 @@ class _TabButton extends StatefulWidget {
   /// Width of the tab strip: the tab never grows past it.
   final double maxWidth;
   final bool isActive;
+
+  /// The tab's container is the focused one.
+  final bool isFocused;
   final DockStyle style;
   final VoidCallback onTap;
   final VoidCallback? onClose;
@@ -187,6 +184,7 @@ class _TabButton extends StatefulWidget {
     required this.title,
     this.maxWidth = double.infinity,
     required this.isActive,
+    this.isFocused = false,
     required this.style,
     required this.onTap,
     required this.onClose,
@@ -207,31 +205,33 @@ class _TabWidgetStateProperty extends State<_TabButton> {
   int _tapCount = 0;
   DateTime? _lastTapAt;
 
-  ButtonStyle _iconBtnStyle() {
-    return ButtonStyle(
-      padding: WidgetStateProperty.all(const EdgeInsets.all(4)),
-      backgroundColor: WidgetStateProperty.resolveWith((states) {
-        if (states.isHovered) return widget.style.surface2;
-        return widget.style.surface;
-      }),
-    );
-  }
+  bool _hover = false;
+
+
 
   @override
   Widget build(BuildContext context) {
-    // The active tab joins the panel below it (solid panel colour, bright
-    // marker on top, bold text); the others sit dimmer on the tab strip.
-    final borderTopColor = widget.isActive
-        ? widget.style.iconColorBlueBg
-        : const Color(0x00000000);
-    final borderColor = widget.style.border;
-    const borderTopWidth = 2.0;
-    final fg = widget.isActive
-        ? widget.style.text
-        : widget.style.text.withValues(alpha: 0.72);
+    // Focused container: its active tab in the accent colour. Other
+    // containers: their active tab lighter than the strip. Inactive tabs
+    // are dimmer (lighter on hover).
+    final st = widget.style;
+    final focusedActive = widget.isActive && widget.isFocused;
+    final Color bg = focusedActive
+        ? st.tabFocusedActiveBackground
+        : widget.isActive
+            ? st.tabActiveBackground
+            : (_hover ? st.text.withValues(alpha: 0.06) : const Color(0x00000000));
+    final Color fg = focusedActive
+        ? st.tabFocusedActiveText
+        : widget.isActive
+            ? st.text
+            : (_hover ? st.text : st.tabInactiveText);
+    final borderColor = st.border;
 
     return MouseRegion(
       cursor: SystemMouseCursors.click,
+      onEnter: (_) => setState(() => _hover = true),
+      onExit: (_) => setState(() => _hover = false),
       child: Listener(
         onPointerDown: (e) {
           // NEW: middle-click closes this tab immediately on desktop
@@ -288,11 +288,8 @@ class _TabWidgetStateProperty extends State<_TabButton> {
           constraints: BoxConstraints(maxWidth: widget.maxWidth),
           padding: const EdgeInsets.only(left: 12, right: 6),
           decoration: BoxDecoration(
-            color: widget.isActive
-                ? widget.style.surface
-                : const Color(0x00000000),
+            color: bg,
             border: Border(
-              top: BorderSide(color: borderTopColor, width: borderTopWidth),
               right: BorderSide(color: borderColor, width: 1),
             ),
           ),
@@ -321,18 +318,22 @@ class _TabWidgetStateProperty extends State<_TabButton> {
               ),
               if (widget.onPinPressed != null) ...[
                 const SizedBox(width: 10),
-                IconButton(
-                  icon: Icon(widget.style.iconPin, size: 12),
-                  onPressed: widget.onPinPressed,
-                  style: _iconBtnStyle(),
+                DockIconButton(
+                  icon: widget.style.iconPin,
+                  size: 12,
+                  color: fg,
+                  tooltip: 'Auto-hide',
+                  onPressed: widget.onPinPressed!,
                 ),
               ],
               if (widget.onClose != null) ...[
                 const SizedBox(width: 6),
-                IconButton(
-                  icon: Icon(widget.style.iconClose, size: 10),
-                  onPressed: widget.onClose,
-                  style: _iconBtnStyle(),
+                DockIconButton(
+                  icon: widget.style.iconClose,
+                  size: 10,
+                  color: fg,
+                  tooltip: 'Close',
+                  onPressed: widget.onClose!,
                 ),
               ],
             ],
@@ -340,5 +341,69 @@ class _TabWidgetStateProperty extends State<_TabButton> {
         ),
       ),
     );
+  }
+}
+
+/// A small icon button of the tab strip with a hover and pressed state of
+/// its own, visible on any strip colour (a hover tint of [color]).
+class DockIconButton extends StatefulWidget {
+  const DockIconButton({
+    super.key,
+    required this.icon,
+    required this.color,
+    required this.onPressed,
+    this.size = 12,
+    this.tooltip,
+  });
+
+  final IconData icon;
+  final Color color;
+  final double size;
+  final String? tooltip;
+  final VoidCallback onPressed;
+
+  @override
+  State<DockIconButton> createState() => _DockIconButtonState();
+}
+
+class _DockIconButtonState extends State<DockIconButton> {
+  bool _hover = false, _down = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final bg = _down
+        ? widget.color.withValues(alpha: 0.30)
+        : _hover
+            ? widget.color.withValues(alpha: 0.18)
+            : const Color(0x00000000);
+    final button = MouseRegion(
+      cursor: SystemMouseCursors.click,
+      onEnter: (_) => setState(() => _hover = true),
+      onExit: (_) => setState(() {
+        _hover = false;
+        _down = false;
+      }),
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTapDown: (_) => setState(() => _down = true),
+        onTapCancel: () => setState(() => _down = false),
+        onTap: () {
+          setState(() => _down = false);
+          widget.onPressed();
+        },
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 90),
+          padding: const EdgeInsets.all(5),
+          decoration: BoxDecoration(
+            color: bg,
+            borderRadius: BorderRadius.circular(4),
+          ),
+          child: Icon(widget.icon, size: widget.size, color: widget.color),
+        ),
+      ),
+    );
+    return widget.tooltip == null
+        ? button
+        : Tooltip(message: widget.tooltip!, child: button);
   }
 }

@@ -145,6 +145,7 @@ class _DockAdsState extends State<DockAds> {
             setState(() {
               _flySide = side;
               _flyPanelId = id;
+              widget.layout.focusedPanelId = id; // an opened flyout has the focus
             });
           },
           activeSide: _flySide,
@@ -215,6 +216,13 @@ class _DockAdsState extends State<DockAds> {
               side: _flySide!,
               panelId: _flyPanelId!,
               title: widget.layout.registry.getById(_flyPanelId!).title,
+              contentPadding:
+                  widget.layout.registry.getById(_flyPanelId!).flyoutPadding,
+              isFocused: widget.layout.focusedPanelId == _flyPanelId,
+              onFocus: () {
+                if (widget.layout.focusedPanelId == _flyPanelId) return;
+                setState(() => widget.layout.focusedPanelId = _flyPanelId);
+              },
               content: Container(child: _buildPanelContent(_flyPanelId!)),
               initialExtent:
                   widget.layout.autoHideExtentFor(_flyPanelId!, _flySide!),
@@ -460,10 +468,20 @@ class _DockAdsState extends State<DockAds> {
         child: _ContainerFrame(
           key: key,
           style: style,
+          // Any click into the container (tab or content) focuses it.
+          child: Listener(
+            behavior: HitTestBehavior.translucent,
+            onPointerDown: (_) {
+              if (node.panelIds.isEmpty) return;
+              final id = node.panelIds[node.activeIndex.clamp(0, node.panelIds.length - 1)];
+              if (node.panelIds.contains(widget.layout.focusedPanelId)) return;
+              setState(() => widget.layout.focusedPanelId = id);
+            },
           child: TabsContainer(
             node: node,
             registry: widget.layout.registry,
             style: style,
+            isFocused: node.panelIds.contains(widget.layout.focusedPanelId),
             isMaximized: identical(_maximized, node),
             onToggleMaximize: () => _toggleMaximize(node),
             onClose: (i) {
@@ -504,6 +522,7 @@ class _DockAdsState extends State<DockAds> {
               _completeDrop();
               _resetDrag();
             },
+          ),
           ),
         ),
       );

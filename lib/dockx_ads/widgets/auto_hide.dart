@@ -265,10 +265,11 @@ class _DraggableStripButtonState extends State<_DraggableStripButton> {
     final borderTopColor =
         highlight ? (widget.style.accent) : widget.style.border;
     // A chip that stands out from the strip, with readable text.
+    // Accent-tinted chip with white text: readable on any dark strip.
     final bgColor = highlight
-        ? widget.style.accent.withValues(alpha: 0.85)
-        : Color.lerp(widget.style.surface2, widget.style.text, 0.10)!;
-    final fg = highlight ? widget.style.iconColorBlueBg : widget.style.text;
+        ? widget.style.accent
+        : Color.lerp(widget.style.surface2, widget.style.accent, 0.45)!;
+    final fg = widget.style.iconColorBlueBg;
     return MouseRegion(
       onEnter: (_) => setState(() => _hover = true),
       onExit: (_) => setState(() => _hover = false),
@@ -296,21 +297,44 @@ class _DraggableStripButtonState extends State<_DraggableStripButton> {
           _down = null;
           _dragging = false;
         },
+        // Exactly as thick as the strip allows (it is placed with 4 px all
+        // round), the text centred in it; an even frame and a shadow.
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 120),
-          padding: widget.style.stripButtonPadding,
+          height: widget.style.stripThickness - 8,
+          padding: EdgeInsets.symmetric(
+              horizontal: widget.style.stripButtonPadding.horizontal / 2),
+          alignment: Alignment.center,
           decoration: BoxDecoration(
             color: bgColor,
-            border: Border(
-              top: BorderSide(color: borderTopColor, width: 2),
-              left: BorderSide(color: widget.style.border),
-              right: BorderSide(color: widget.style.border),
-              bottom: BorderSide(color: widget.style.border),
-            ),
+            borderRadius: BorderRadius.circular(4),
+            border: Border.all(
+                color: highlight ? borderTopColor : widget.style.border),
+            boxShadow: [
+              BoxShadow(
+                color: widget.style.shadow.withValues(alpha: 0.45),
+                blurRadius: 4,
+                offset: const Offset(0, 1),
+              ),
+            ],
           ),
           child: Text(
             widget.text,
-            style: TextStyle(color: fg, fontSize: 12, fontWeight: FontWeight.w600),
+            maxLines: 1,
+            softWrap: false,
+            style: TextStyle(
+              color: fg,
+              fontSize: 12,
+              height: 1.0,
+              fontWeight: FontWeight.w600,
+              shadows: [
+                Shadow(
+                  color: widget.style.shadow.withValues(alpha: 0.6),
+                  blurRadius: 2,
+                  offset: const Offset(0, 1),
+                ),
+              ],
+            ),
           ),
         ),
       ),
@@ -333,6 +357,15 @@ class AutoHideFlyout extends StatefulWidget {
   final void Function(String panelId) onRemove;
   final DockStyle style;
 
+  /// Space around [content]; null uses [DockStyle.flyoutContentPadding].
+  final EdgeInsets? contentPadding;
+
+  /// The flyout's panel has the focus: its header gets the accent.
+  final bool isFocused;
+
+  /// The user clicked into the flyout.
+  final VoidCallback? onFocus;
+
   const AutoHideFlyout({
     super.key,
     required this.side,
@@ -348,6 +381,9 @@ class AutoHideFlyout extends StatefulWidget {
     required this.onDragUpdate,
     required this.onDragEnd,
     required this.style,
+    this.contentPadding,
+    this.isFocused = false,
+    this.onFocus,
   });
 
   @override
@@ -374,8 +410,8 @@ class _AutoHideFlyoutState extends State<AutoHideFlyout>
     _applyInitialExtent();
     _ctrl = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 200),
-      reverseDuration: const Duration(milliseconds: 180),
+      duration: const Duration(milliseconds: 220),
+      reverseDuration: const Duration(milliseconds: 170),
     );
 
     _fade = CurvedAnimation(
@@ -411,11 +447,12 @@ class _AutoHideFlyoutState extends State<AutoHideFlyout>
   }
 
   void _rebuildSlide() {
-    // slide in from the side (fraction of its own size)
+    // Slides all the way out of its strip's edge: up from the bottom
+    // strip, out from a side strip; closing slides it back the same way.
     final begin = switch (widget.side) {
-      AutoSide.left => const Offset(-0.08, 0),
-      AutoSide.right => const Offset(0.08, 0),
-      AutoSide.bottom => const Offset(0, 0.10),
+      AutoSide.left => const Offset(-1, 0),
+      AutoSide.right => const Offset(1, 0),
+      AutoSide.bottom => const Offset(0, 1),
     };
     _slide = Tween<Offset>(begin: begin, end: Offset.zero).animate(
       CurvedAnimation(
@@ -447,14 +484,17 @@ class _AutoHideFlyoutState extends State<AutoHideFlyout>
         // sizing it from the window cut its bottom and right edge off.
         builder: (context, box) => _build(
           Size(
-            box.hasBoundedWidth ? box.maxWidth : MediaQuery.of(context).size.width,
-            box.hasBoundedHeight ? box.maxHeight : MediaQuery.of(context).size.height,
+            box.hasBoundedWidth
+                ? box.maxWidth
+                : MediaQuery.of(context).size.width,
+            box.hasBoundedHeight
+                ? box.maxHeight
+                : MediaQuery.of(context).size.height,
           ),
         ),
       );
 
   Widget _build(Size size) {
-
     final isVertical = widget.side != AutoSide.bottom; // left/right
     final minW = 220.0;
     final maxW = (size.width * 0.8).clamp(minW, size.width);
@@ -500,6 +540,7 @@ class _AutoHideFlyoutState extends State<AutoHideFlyout>
     final header = _FlyoutHeader(
       title: widget.title,
       style: widget.style,
+      isFocused: widget.isFocused,
       onDown: (pos) {
         down = pos;
         widget.onDragStart(pos, widget.panelId);
@@ -515,21 +556,29 @@ class _AutoHideFlyoutState extends State<AutoHideFlyout>
       onRemove: () => widget.onRemove(widget.panelId),
     );
 
-    final body = Container(
-      decoration: BoxDecoration(
-        color: widget.style.surface,
-        border: Border.all(color: widget.style.border),
-      ),
-      child: Column(
-        children: [
-          header,
-          Expanded(
-            child: Container(
-              color: widget.style.background,
-              child: widget.content,
+    final body = Listener(
+      behavior: HitTestBehavior.translucent,
+      onPointerDown: (_) => widget.onFocus?.call(),
+      child: Container(
+        decoration: BoxDecoration(
+          color: widget.style.surface,
+          border: Border.all(
+              color:
+                  widget.isFocused ? widget.style.accent : widget.style.border),
+        ),
+        child: Column(
+          children: [
+            header,
+            Expanded(
+              child: Container(
+                color: widget.style.background,
+                padding:
+                    widget.contentPadding ?? widget.style.flyoutContentPadding,
+                child: widget.content,
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
 
@@ -540,8 +589,8 @@ class _AutoHideFlyoutState extends State<AutoHideFlyout>
           top: 0,
           bottom: 0,
           width: 6,
-          child:
-              _SideResizeBar(onDragDeltaX: _resizeWidth, style: widget.style),
+          child: _SideResizeBar(
+              onDragDeltaX: _resizeWidth, style: widget.style, atLeft: false),
         ),
       if (widget.side == AutoSide.right)
         Positioned(
@@ -583,8 +632,9 @@ class _AutoHideFlyoutState extends State<AutoHideFlyout>
           top: top,
           width: w,
           height: h,
-          child: FadeTransition(
-            opacity: _fade,
+          // Clipped to its own area: it comes out of the strip's edge
+          // instead of sliding over the neighbouring panels.
+          child: ClipRect(
             child: SlideTransition(
               position: _slide,
               child: Stack(children: [body, ...grips]),
@@ -600,6 +650,7 @@ class _AutoHideFlyoutState extends State<AutoHideFlyout>
 class _FlyoutHeader extends StatefulWidget {
   final String title;
   final DockStyle style;
+  final bool isFocused;
   final void Function(Offset pos) onDown; // called once when drag really begins
   final void Function(Offset pos) onMove; // continuous while dragging
   final VoidCallback onUp; // when drag ends
@@ -609,6 +660,7 @@ class _FlyoutHeader extends StatefulWidget {
   const _FlyoutHeader({
     required this.title,
     required this.style,
+    this.isFocused = false,
     required this.onDown,
     required this.onMove,
     required this.onUp,
@@ -631,6 +683,10 @@ class _FlyoutHeaderState extends State<_FlyoutHeader> {
 
   @override
   Widget build(BuildContext context) {
+    // Coloured like a focused tab when the flyout has the focus.
+    final st = widget.style;
+    final bg = widget.isFocused ? st.tabFocusedActiveBackground : st.surface;
+    final fg = widget.isFocused ? st.tabFocusedActiveText : st.text;
     return Listener(
       onPointerDown: (e) {
         _downGlobal = e.position;
@@ -661,14 +717,18 @@ class _FlyoutHeaderState extends State<_FlyoutHeader> {
       },
       child: Container(
         height: 28,
-        color: widget.style.surface,
+        color: bg,
         child: Row(
           children: [
             const SizedBox(width: 8),
             Expanded(
               child: Text(
                 widget.title,
-                style: TextStyle(color: widget.style.text, fontSize: 12),
+                style: TextStyle(
+                    color: fg,
+                    fontSize: 12,
+                    fontWeight:
+                        widget.isFocused ? FontWeight.w600 : FontWeight.normal),
                 overflow: TextOverflow.ellipsis,
               ),
             ),
@@ -678,8 +738,7 @@ class _FlyoutHeaderState extends State<_FlyoutHeader> {
               onEnter: (_) => _pointerIsOverButton = true,
               onExit: (_) => _pointerIsOverButton = false,
               child: IconButton(
-                icon: Icon(widget.style.iconPin,
-                    size: 12, color: widget.style.text),
+                icon: Icon(widget.style.iconPin, size: 12, color: fg),
                 onPressed: widget.onPin,
               ),
             ),
@@ -689,8 +748,7 @@ class _FlyoutHeaderState extends State<_FlyoutHeader> {
               onEnter: (_) => _pointerIsOverButton = true,
               onExit: (_) => _pointerIsOverButton = false,
               child: IconButton(
-                icon: Icon(widget.style.iconClose,
-                    size: 12, color: widget.style.text),
+                icon: Icon(widget.style.iconClose, size: 12, color: fg),
                 onPressed: widget.onRemove,
               ),
             ),
@@ -701,57 +759,88 @@ class _FlyoutHeaderState extends State<_FlyoutHeader> {
   }
 }
 
-class _SideResizeBar extends StatefulWidget {
+class _SideResizeBar extends StatelessWidget {
   final void Function(double dx) onDragDeltaX;
   final DockStyle style;
-  const _SideResizeBar({required this.onDragDeltaX, required this.style});
+
+  /// Which edge of the flyout the bar is on (the line is drawn there).
+  final bool atLeft;
+  const _SideResizeBar(
+      {required this.onDragDeltaX, required this.style, this.atLeft = true});
   @override
-  State<_SideResizeBar> createState() => _SideResizeBarState();
+  Widget build(BuildContext context) => _EdgeResizer(
+        horizontal: true,
+        onDelta: onDragDeltaX,
+        style: style,
+        lineAlignment: atLeft ? Alignment.centerLeft : Alignment.centerRight,
+      );
 }
 
-class _SideResizeBarState extends State<_SideResizeBar> {
-  bool _hover = false;
-  @override
-  Widget build(BuildContext context) {
-    return MouseRegion(
-      cursor: SystemMouseCursors.resizeLeftRight,
-      onEnter: (_) => setState(() => _hover = true),
-      onExit: (_) => setState(() => _hover = false),
-      child: Listener(
-        onPointerMove: (e) => widget.onDragDeltaX(e.delta.dx),
-        child: DecoratedBox(
-          decoration: BoxDecoration(
-            color: _hover ? widget.style.surface2 : const Color(0x00000000),
-            border: Border(left: BorderSide(color: widget.style.border)),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _TopResizeBar extends StatefulWidget {
+class _TopResizeBar extends StatelessWidget {
   final void Function(double dy) onDragDeltaY;
   final DockStyle style;
   const _TopResizeBar({required this.onDragDeltaY, required this.style});
   @override
-  State<_TopResizeBar> createState() => _TopResizeBarState();
+  Widget build(BuildContext context) => _EdgeResizer(
+        horizontal: false,
+        onDelta: onDragDeltaY,
+        style: style,
+        lineAlignment: Alignment.topCenter,
+      );
 }
 
-class _TopResizeBarState extends State<_TopResizeBar> {
-  bool _hover = false;
+/// A flyout's resize edge: an invisible grab area with an accent line at the
+/// edge while hovered or dragged, so it never covers the content (or the
+/// flyout's border).
+/// A drag gesture keeps the resize going (and the cursor) even when the
+/// mouse leaves the narrow area.
+class _EdgeResizer extends StatefulWidget {
+  final bool horizontal;
+  final void Function(double delta) onDelta;
+  final DockStyle style;
+  final Alignment lineAlignment;
+  const _EdgeResizer({
+    required this.horizontal,
+    required this.onDelta,
+    required this.style,
+    required this.lineAlignment,
+  });
+  @override
+  State<_EdgeResizer> createState() => _EdgeResizerState();
+}
+
+class _EdgeResizerState extends State<_EdgeResizer> {
+  bool _hover = false, _dragging = false;
+
   @override
   Widget build(BuildContext context) {
+    // Idle it draws nothing: the flyout's own border shows through.
+    final lit = _hover || _dragging;
+    const line = 2.0;
+    final h = widget.horizontal;
     return MouseRegion(
-      cursor: SystemMouseCursors.resizeUpDown,
+      cursor: h
+          ? SystemMouseCursors.resizeLeftRight
+          : SystemMouseCursors.resizeUpDown,
       onEnter: (_) => setState(() => _hover = true),
       onExit: (_) => setState(() => _hover = false),
-      child: Listener(
-        onPointerMove: (e) => widget.onDragDeltaY(e.delta.dy),
-        child: DecoratedBox(
-          decoration: BoxDecoration(
-            color: _hover ? widget.style.surface2 : const Color(0x00000000),
-            border: Border(bottom: BorderSide(color: widget.style.border)),
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onHorizontalDragStart:
+            h ? (_) => setState(() => _dragging = true) : null,
+        onHorizontalDragUpdate: h ? (d) => widget.onDelta(d.delta.dx) : null,
+        onHorizontalDragEnd:
+            h ? (_) => setState(() => _dragging = false) : null,
+        onVerticalDragStart: h ? null : (_) => setState(() => _dragging = true),
+        onVerticalDragUpdate: h ? null : (d) => widget.onDelta(d.delta.dy),
+        onVerticalDragEnd: h ? null : (_) => setState(() => _dragging = false),
+        child: Align(
+          alignment: widget.lineAlignment,
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 90),
+            width: h ? line : null,
+            height: h ? null : line,
+            color: lit ? widget.style.accent : const Color(0x00000000),
           ),
         ),
       ),
